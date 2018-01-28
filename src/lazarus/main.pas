@@ -704,11 +704,19 @@ begin
       FCurrentFrame := 0;
     end;
   except
-    on E: Exception do
+    on E: Exception do begin
       MessageBoxW(FWindow, PWideChar(
         WideString('処理中にエラーが発生しました。'#13#10#13#10 +
         WideString(E.Message))),
         PluginName, MB_ICONERROR);
+
+      SetWindowTextW(FCacheCreateButton, CreateButtonCaption[False]);
+      UpdateStatus('');
+      Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
+      FStartFrame := 0;
+      FEndFrame := 0;
+      FCurrentFrame := 0;
+    end;
   end;
 end;
 
