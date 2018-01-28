@@ -43,18 +43,15 @@ end;
 
 function BytesToStr(const Value: QWord; const InsertSpace: boolean = True): string;
 const
-  byte = 0;
   KILLO = 1024;
   MEGA = KILLO * 1024;
   GIGA = MEGA * 1024;
   TERA = QWord(GIGA) * 1024;
 
-  BYTE1000 = 0;
   KILLO1000 = 1000;
   MEGA1000 = KILLO1000 * 1000;
   GIGA1000 = MEGA1000 * 1000;
   TERA1000 = QWord(GIGA1000) * 1000;
-  Formats: array[boolean] of string = ('#,##0.00', '#,##');
 var
   f: extended;
   s, Ext: string;
@@ -72,24 +69,24 @@ begin
   else if Value < MEGA1000 then
   begin
     f := Value / KILLO;
-    Ext := 'KB';
+    Ext := 'KiB';
   end
   else if Value < GIGA1000 then
   begin
     f := Value / MEGA;
-    Ext := 'MB';
+    Ext := 'MiB';
   end
   else if Value < TERA1000 then
   begin
     f := Value / GIGA;
-    Ext := 'GB';
+    Ext := 'GiB';
   end
   else
   begin
     f := Value / TERA;
-    Ext := 'TB';
+    Ext := 'TiB';
   end;
-  Result := FormatFloat(Formats[f >= 10], f) + s + Ext;
+  Result := FormatFloat('#,##0.00', f) + s + Ext;
 end;
 
 procedure WriteUInt64(const S: TStream; const V: QWord);
