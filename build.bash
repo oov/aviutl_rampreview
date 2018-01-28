@@ -6,7 +6,7 @@ mkdir bin
 sed 's/\r$//' README.md | sed 's/$/\r/' > bin/README.txt
 
 # update version string
-VERSION='v0.1alpha'
+VERSION='v0.1.1alpha'
 GITHASH=`git rev-parse --short HEAD`
 cat << EOS | sed 's/\r$//' | sed 's/$/\r/' > 'src/lazarus/ver.pas'
 unit Ver;
