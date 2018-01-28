@@ -49,6 +49,7 @@ type
     procedure LeaveCS(CommandName: string);
 
     procedure Clear();
+    function Stat(): QWord;
     procedure Put(const Key: integer; const Size: integer);
     function Get(const Key: integer): integer;
 
@@ -552,6 +553,23 @@ begin
   end;
 end;
 
+function TRamPreview.Stat(): QWord;
+begin
+  EnterCS('STAT');
+  try
+    PrepareIPC();
+    FRemoteProcess.Input.WriteBuffer('STAT', 4);
+  finally
+    LeaveCS('STAT');
+  end;
+  FReceiver.WaitResult();
+  try
+    Result := FReceiver.ReadUInt64();
+  finally
+    FReceiver.Done();
+  end;
+end;
+
 procedure TRamPreview.Put(const Key: integer; const Size: integer);
 begin
   EnterCS('PUT ');
@@ -698,7 +716,7 @@ procedure TRamPreview.UpdateCacheSize();
 begin
   if FRemoteProcess.Running then
     SetWindowTextW(FCacheSizeLabel,
-      PWideChar(WideString(BytesToStr(GetWorkingSetSize(FRemoteProcess.ProcessHandle)))))
+      PWideChar(WideString(BytesToStr(Stat()))))
   else
     SetWindowTextW(FCacheSizeLabel, '');
 end;

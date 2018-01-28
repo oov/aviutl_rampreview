@@ -11,7 +11,6 @@ uses
 procedure ODS(const Fmt: string; const Args: array of const);
 
 function GetDLLName(): WideString;
-function GetWorkingSetSize(Process: THandle): QWord;
 function BytesToStr(const Value: QWord; const InsertSpace: boolean = True): string;
 procedure WriteUInt64(const S: TStream; const V: QWord);
 procedure WriteUInt32(const S: TStream; const V: DWORD);
@@ -28,24 +27,6 @@ uses
 var
   debugging: boolean;
 
-type
-  TProcessMemoryCounters = packed record
-    cb: DWORD;
-    PageFaultCount: DWORD;
-    PeakWorkingSetSize: size_t;
-    WorkingSetSize: size_t;
-    QuotaPeakPagedPoolUsage: size_t;
-    QuotaPagedPoolUsage: size_t;
-    QuotaPeakNonPagedPoolUsage: size_t;
-    QuotaNonPagedPoolUsage: size_t;
-    PagefileUsage: size_t;
-    PeakPagefileUsage: size_t;
-  end;
-
-function GetProcessMemoryInfo(Process: THandle;
-  var ppsmemCounters: TProcessMemoryCounters; cb: DWORD): BOOL; stdcall;
-  external 'psapi.dll' Name 'GetProcessMemoryInfo';
-
 procedure ODS(const Fmt: string; const Args: array of const);
 begin
   if not debugging then
@@ -58,17 +39,6 @@ begin
   SetLength(Result, MAX_PATH);
   GetModuleFileNameW(hInstance, @Result[1], MAX_PATH);
   Result := PWideChar(Result);
-end;
-
-function GetWorkingSetSize(Process: THandle): QWord;
-var
-  PMC: TProcessMemoryCounters;
-begin
-  Result := 0;
-  PMC.cb := SizeOf(TProcessMemoryCounters);
-  if not GetProcessMemoryInfo(Process, PMC, SizeOf(TProcessMemoryCounters)) then
-    Exit;
-  Result := PMC.WorkingSetSize;
 end;
 
 function BytesToStr(const Value: QWord; const InsertSpace: boolean = True): string;

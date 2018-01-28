@@ -90,6 +90,14 @@ func (ipc *IPC) dispatch(cmd string) error {
 		}
 		return err
 
+	case "STAT":
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		if err := writeUint32(0x80000000); err != nil {
+			return err
+		}
+		return writeUint64(m.Alloc)
+
 	case "CLR ":
 		ipc.test = map[int][]byte{}
 		runtime.GC()
