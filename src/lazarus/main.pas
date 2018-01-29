@@ -161,8 +161,8 @@ function TRamPreview.MainProc(Window: HWND; Message: UINT; WP: WPARAM;
 const
   ExEditVersion = ' version 0.92 ';
   ToggleModeCaption = #$93#$ae#$8d#$ec#$83#$82#$81#$5b#$83#$68#$90#$d8#$82#$e8#$91#$d6#$82#$a6#$81#$69#$92#$ca#$8f#$ed#$81#$5e#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$81#$6a; // 動作モード切り替え（通常／RAMプレビュー）
-  CaptureCaption = #$91#$49#$91#$f0#$94#$cd#$88#$cd#$82#$a9#$82#$e7#$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$82#$f0#$8d#$ec#$90#$ac#$81#$5E#$92#$86#$8E#$7E; // 選択範囲からキャッシュを作成／中止
-  ClearCacheCaption = #$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$82#$f0#$8f#$c1#$8b#$8e; // キャッシュを消去
+  CaptureCaption = #$91#$49#$91#$f0#$94#$cd#$88#$cd#$82#$a9#$82#$e7#$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8d#$ec#$90#$ac#$81#$5E#$92#$86#$8E#$7E; // 選択範囲からキャッシュ作成／中止
+  ClearCacheCaption = #$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8f#$c1#$8b#$8e; // キャッシュ消去
 var
   Y, Height: integer;
   NCM: TNonClientMetrics;
