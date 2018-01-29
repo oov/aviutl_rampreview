@@ -681,8 +681,8 @@ end;
 
 procedure TRamPreview.Capturing(Edit: Pointer; Filter: PFilter);
 var
-  Samples, Bytes, W, H: integer;
-  Pix: PPixelYC;
+  Samples, W, H, Y, SrcW, DestW: integer;
+  Src, Dest: PByte;
 begin
   try
     FCapturing := True;
@@ -691,26 +691,34 @@ begin
         FCurrentFrame, FAudioBuffer);
       if Samples > 0 then
       begin
-        Bytes := FAudioChannels * Samples * SizeOf(smallint);
+        W := FAudioChannels * Samples * SizeOf(smallint);
         FMappedViewHeader^.A := Samples;
         FMappedViewHeader^.B := FAudioChannels;
-        Move(FAudioBuffer^, FMappedViewData^, Bytes);
-        Put(-FCurrentFrame, Bytes + SizeOf(TDataHeader));
+        Move(FAudioBuffer^, FMappedViewData^, W);
+        Put(-FCurrentFrame, W + SizeOf(TDataHeader));
       end;
 
       if Filter^.ExFunc^.SetYCPFilteringCacheSize(Filter, FCacheWidth,
         FCacheHeight, 1, 0) = AVIUTL_FALSE then
         raise Exception.Create('SetYCPFilteringCacheSize に失敗しました');
 
-      Pix := Filter^.ExFunc^.GetYCPFilteringCacheEx(Filter, Edit, FCurrentFrame, @W, @H);
-      if Pix <> nil then
+      Src := PByte(Filter^.ExFunc^.GetYCPFilteringCacheEx(Filter, Edit, FCurrentFrame, @W, @H));
+      if Src <> nil then
       begin
-        Bytes := W * SizeOf(TPixelYC) * H;
+        SrcW := FCacheWidth * SizeOf(TPixelYC);
+        DestW := W * SizeOf(TPixelYC);
+        Dest := FMappedViewData;
+
         FMappedViewHeader^.A := W;
         FMappedViewHeader^.B := H;
         FMappedViewHeader^.C := SizeOf(TPixelYC);
-        Move(Pix^, FMappedViewData^, Bytes);
-        Put(FCurrentFrame, Bytes + SizeOf(TDataHeader));
+        for Y := 0 to H - 1 do
+        begin
+          Move(Src^, Dest^, DestW);
+          Inc(Src, SrcW);
+          Inc(Dest, DestW);
+        end;
+        Put(FCurrentFrame, DestW * H + SizeOf(TDataHeader));
       end;
     finally
       FCapturing := False;
