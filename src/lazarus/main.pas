@@ -55,8 +55,11 @@ type
 
     procedure CaptureRange(Edit: Pointer; Filter: PFilter);
     procedure Capturing(Edit: Pointer; Filter: PFilter);
-    procedure UpdateCacheSize();
+    procedure ClearCache(Edit: Pointer; Filter: PFilter);
+    procedure UpdateCacheSize(Edit: Pointer; Filter: PFilter);
 
+    function GetPlayModeComboBox: boolean;
+    procedure SetPlayModeComboBox(AValue: boolean);
     function GetEntry: PFilterDLL;
     function GetEntryAudio: PFilterDLL;
     function InitProc(Filter: PFilter): boolean;
@@ -71,6 +74,7 @@ type
     destructor Destroy(); override;
     property Entry: PFilterDLL read GetEntry;
     property EntryAudio: PFilterDLL read GetEntryAudio;
+    property PlayModeComboBox: boolean read GetPlayModeComboBox write SetPlayModeComboBox;
   end;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
@@ -156,6 +160,9 @@ function TRamPreview.MainProc(Window: HWND; Message: UINT; WP: WPARAM;
   LP: LPARAM; Edit: Pointer; Filter: PFilter): integer;
 const
   ExEditVersion = ' version 0.92 ';
+  ToggleModeCaption = #$93#$ae#$8d#$ec#$83#$82#$81#$5b#$83#$68#$90#$d8#$82#$e8#$91#$d6#$82#$a6#$81#$69#$92#$ca#$8f#$ed#$81#$5e#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$81#$6a; // 動作モード切り替え（通常／RAMプレビュー）
+  CaptureCaption = #$91#$49#$91#$f0#$94#$cd#$88#$cd#$82#$a9#$82#$e7#$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$82#$f0#$8d#$ec#$90#$ac#$81#$5E#$92#$86#$8E#$7E; // 選択範囲からキャッシュを作成／中止
+  ClearCacheCaption = #$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$82#$f0#$8f#$c1#$8b#$8e; // キャッシュを消去
 var
   Y, Height: integer;
   NCM: TNonClientMetrics;
@@ -255,6 +262,10 @@ begin
         FOriginalExEditAudioProc := FExEditAudio^.FuncProc;
         FExEditAudio^.FuncProc := @ExEditAudioDummyFuncProc;
 
+        Filter^.ExFunc^.AddMenuItem(Filter, ToggleModeCaption, Window, 100, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL);
+        Filter^.ExFunc^.AddMenuItem(Filter, CaptureCaption, Window, 101, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL or ADD_MENU_ITEM_FLAG_KEY_SHIFT);
+        Filter^.ExFunc^.AddMenuItem(Filter, ClearCacheCaption, Window, 102, VK_E, ADD_MENU_ITEM_FLAG_KEY_CTRL);
+
         SetTimer(Filter^.Hwnd, 100, 3000, nil);
       except
         on E: Exception do
@@ -286,31 +297,58 @@ begin
     end;
     WM_COMMAND:
     begin
-      case LOWORD(WP) of
-        1:
-        begin
-          if HIWORD(WP) = LBN_SELCHANGE then
-            case SendMessageW(FPlayModeList, LB_GETCURSEL, 0, 0) of
-              0: FPlaying := False;
-              1: FPlaying := True;
-            end;
+      try
+        case LOWORD(WP) of
+          1:
+          begin
+            if HIWORD(WP) = LBN_SELCHANGE then
+              FPlaying := PlayModeComboBox;
+          end;
+          2: CaptureRange(Edit, Filter);
+          4: ClearCache(Edit, Filter);
         end;
-        2: CaptureRange(Edit, Filter);
-        4: if FRemoteProcess.Running then Clear();
+      except
+        on E: Exception do
+          MessageBoxW(FWindow, PWideChar(
+            WideString('処理中にエラーが発生しました。'#13#10#13#10 +
+            WideString(E.Message))),
+            PluginName, MB_ICONERROR);
       end;
+    end;
+    WM_FILTER_COMMAND:
+    begin
+      try
+        case LOWORD(WP) of
+          100: PlayModeComboBox := not PlayModeComboBox;
+          101: CaptureRange(Edit, Filter);
+          102: ClearCache(Edit, Filter);
+        end;
+      except
+        on E: Exception do
+          MessageBoxW(FWindow, PWideChar(
+            WideString('処理中にエラーが発生しました。'#13#10#13#10 +
+            WideString(E.Message))),
+            PluginName, MB_ICONERROR);
+      end;
+
     end;
     WM_TIMER:
     begin
-      case WP of
-        3:
-        begin
-          KillTimer(Filter^.Hwnd, FTimer);
-          Capturing(Edit, Filter);
+      try
+        case WP of
+          3:
+          begin
+            KillTimer(Filter^.Hwnd, FTimer);
+            Capturing(Edit, Filter);
+          end;
+          100: UpdateCacheSize(Edit, Filter);
         end;
-        100:
-        begin
-          UpdateCacheSize();
-        end;
+      except
+        on E: Exception do
+          MessageBoxW(FWindow, PWideChar(
+            WideString('処理中にエラーが発生しました。'#13#10#13#10 +
+            WideString(E.Message))),
+            PluginName, MB_ICONERROR);
       end;
     end;
     else
@@ -534,23 +572,23 @@ end;
 
 procedure TRamPreview.Clear();
 begin
+  EnterCS('CLR ');
   try
-    EnterCS('CLR ');
-    try
-      PrepareIPC();
-      FRemoteProcess.Input.WriteBuffer('CLR ', 4);
-    finally
-      LeaveCS('CLR ');
-    end;
-    FReceiver.WaitResult();
-    FReceiver.Done();
-  except
-    on E: Exception do
-      MessageBoxW(FWindow, PWideChar(
-        WideString('処理中にエラーが発生しました。'#13#10#13#10 +
-        WideString(E.Message))),
-        PluginName, MB_ICONERROR);
+    PrepareIPC();
+    FRemoteProcess.Input.WriteBuffer('CLR ', 4);
+  finally
+    LeaveCS('CLR ');
   end;
+  FReceiver.WaitResult();
+  FReceiver.Done();
+end;
+
+procedure TRamPreview.SetPlayModeComboBox(AValue: boolean);
+const
+  V: array[boolean] of WPARAM = (0, 1);
+begin
+  SendMessageW(FPlayModeList, LB_SETCURSEL, V[AValue], 0);
+  FPlaying := AValue;
 end;
 
 function TRamPreview.Stat(): QWord;
@@ -608,45 +646,37 @@ var
   StartFrame, EndFrame, Size: integer;
   FI: TFileInfo;
 begin
-  try
-    if FStartFrame <> FEndFrame then
-    begin
-      FCurrentFrame := FEndFrame;
-      Exit;
-    end;
-    FillChar(FI, SizeOf(TFileInfo), 0);
-    if Filter^.ExFunc^.GetFileInfo(Edit, @FI) = AVIUTL_FALSE then
-      raise Exception.Create(
-        '編集中のファイルの情報取得に失敗しました');
-    if (FI.Width = 0)or(FI.Height = 0) then Exit;
-    if Filter^.ExFunc^.GetSelectFrame(Edit, StartFrame, EndFrame) = AVIUTL_FALSE then
-      raise Exception.Create('選択範囲を取得できませんでした');
-
-    if FAudioBuffer <> nil then
-    begin
-      FreeMem(FAudioBuffer);
-      FAudioBuffer := nil;
-    end;
-    FAudioChannels := FI.AudioCh;
-    Size := Filter^.ExFunc^.GetAudioFiltered(Edit, StartFrame, nil) *
-      FAudioChannels * SizeOf(smallint);
-    FAudioBuffer := GetMem(Size * 3);
-
-    FCacheWidth := FI.Width;
-    FCacheHeight := FI.Height;
-    FStartFrame := StartFrame;
-    FEndFrame := EndFrame;
-    FCurrentFrame := StartFrame;
-
-    FTimer := SetTimer(Filter^.Hwnd, 3, 0, nil);
-    SetWindowTextW(FCacheCreateButton, CreateButtonCaption[True]);
-  except
-    on E: Exception do
-      MessageBoxW(FWindow, PWideChar(
-        WideString('処理中にエラーが発生しました。'#13#10#13#10 +
-        WideString(E.Message))),
-        PluginName, MB_ICONERROR);
+  if FStartFrame <> FEndFrame then
+  begin
+    FCurrentFrame := FEndFrame;
+    Exit;
   end;
+  FillChar(FI, SizeOf(TFileInfo), 0);
+  if Filter^.ExFunc^.GetFileInfo(Edit, @FI) = AVIUTL_FALSE then
+    raise Exception.Create(
+      '編集中のファイルの情報取得に失敗しました');
+  if (FI.Width = 0)or(FI.Height = 0) then Exit;
+  if Filter^.ExFunc^.GetSelectFrame(Edit, StartFrame, EndFrame) = AVIUTL_FALSE then
+    raise Exception.Create('選択範囲を取得できませんでした');
+
+  if FAudioBuffer <> nil then
+  begin
+    FreeMem(FAudioBuffer);
+    FAudioBuffer := nil;
+  end;
+  FAudioChannels := FI.AudioCh;
+  Size := Filter^.ExFunc^.GetAudioFiltered(Edit, StartFrame, nil) *
+    FAudioChannels * SizeOf(smallint);
+  FAudioBuffer := GetMem(Size * 3);
+
+  FCacheWidth := FI.Width;
+  FCacheHeight := FI.Height;
+  FStartFrame := StartFrame;
+  FEndFrame := EndFrame;
+  FCurrentFrame := StartFrame;
+
+  FTimer := SetTimer(Filter^.Hwnd, 3, 0, nil);
+  SetWindowTextW(FCacheCreateButton, CreateButtonCaption[True]);
 end;
 
 procedure TRamPreview.Capturing(Edit: Pointer; Filter: PFilter);
@@ -720,7 +750,14 @@ begin
   end;
 end;
 
-procedure TRamPreview.UpdateCacheSize();
+procedure TRamPreview.ClearCache(Edit: Pointer; Filter: PFilter);
+begin
+  if not FRemoteProcess.Running then Exit;
+  Clear();
+  PlayModeComboBox := False;
+end;
+
+procedure TRamPreview.UpdateCacheSize(Edit: Pointer; Filter: PFilter);
 begin
   if FRemoteProcess.Running then
     SetWindowTextW(FCacheSizeLabel,
@@ -779,6 +816,15 @@ begin
   FReceiver.WaitResult();
   FReceiver.Done();
 
+end;
+
+function TRamPreview.GetPlayModeComboBox: boolean;
+begin
+  case SendMessageW(FPlayModeList, LB_GETCURSEL, 0, 0) of
+    0: Result := False;
+    1: Result := True;
+    else raise Exception.Create('unexpected play mode value');
+  end;
 end;
 
 initialization
