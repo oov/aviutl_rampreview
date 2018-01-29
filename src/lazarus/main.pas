@@ -732,6 +732,7 @@ begin
       FStartFrame := 0;
       FEndFrame := 0;
       FCurrentFrame := 0;
+      PlayModeComboBox := True;
     end;
   except
     on E: Exception do begin
