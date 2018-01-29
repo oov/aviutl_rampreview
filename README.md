@@ -66,7 +66,7 @@ Lazarus は C:\lazarus にインストールされているのを想定してい
 
 ## Credits
 
-CachePlay is made possible by the following open source softwares.
+拡張編集RAMプレビュー is made possible by the following open source softwares.
 
 ### The Go Programming Language
 
