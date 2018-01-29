@@ -262,9 +262,9 @@ begin
         FOriginalExEditAudioProc := FExEditAudio^.FuncProc;
         FExEditAudio^.FuncProc := @ExEditAudioDummyFuncProc;
 
-        Filter^.ExFunc^.AddMenuItem(Filter, ToggleModeCaption, Window, 100, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL);
-        Filter^.ExFunc^.AddMenuItem(Filter, CaptureCaption, Window, 101, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL or ADD_MENU_ITEM_FLAG_KEY_SHIFT);
-        Filter^.ExFunc^.AddMenuItem(Filter, ClearCacheCaption, Window, 102, VK_E, ADD_MENU_ITEM_FLAG_KEY_CTRL);
+        Filter^.ExFunc^.AddMenuItem(Filter, CaptureCaption, Window, 100, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL);
+        Filter^.ExFunc^.AddMenuItem(Filter, ClearCacheCaption, Window, 101, VK_E, ADD_MENU_ITEM_FLAG_KEY_CTRL);
+        Filter^.ExFunc^.AddMenuItem(Filter, ToggleModeCaption, Window, 102, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL or ADD_MENU_ITEM_FLAG_KEY_SHIFT);
 
         SetTimer(Filter^.Hwnd, 100, 3000, nil);
       except
@@ -319,9 +319,9 @@ begin
     begin
       try
         case LOWORD(WP) of
-          100: PlayModeComboBox := not PlayModeComboBox;
-          101: CaptureRange(Edit, Filter);
-          102: ClearCache(Edit, Filter);
+          100: CaptureRange(Edit, Filter);
+          101: ClearCache(Edit, Filter);
+          102: PlayModeComboBox := not PlayModeComboBox;
         end;
       except
         on E: Exception do
