@@ -887,7 +887,6 @@ begin
     Exit;
   try
     FRemoteProcess.Execute;
-
   except
     on E: EProcess do
     begin
@@ -928,7 +927,6 @@ begin
   end;
   FReceiver.WaitResult();
   FReceiver.Done();
-
 end;
 
 function TRamPreview.GetPlayModeComboBox: boolean;
@@ -953,10 +951,10 @@ initialization
   FilterDLLList[1] := RamPreview.EntryAudio;
   FilterDLLList[2] := nil;
 
-  Storage.GetMaxBufferSize:=@StorageGetMaxBufferSize;
-  Storage.Get:=@StorageGet;
-  Storage.Put:=@StoragePut;
-  Storage.Del:=@StorageDel;
+  Storage.GetMaxBufferSize := @StorageGetMaxBufferSize;
+  Storage.Get := @StorageGet;
+  Storage.Put := @StoragePut;
+  Storage.Del := @StorageDel;
 
 finalization
   RamPreview.Free();
