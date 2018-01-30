@@ -43,7 +43,7 @@ type
     FCacheWidth, FCacheHeight: integer;
     FAudioChannels: integer;
     FAudioBuffer: Pointer;
-    FCacheSizeUpdatedAt: Cardinal;
+    FCacheSizeUpdatedAt: cardinal;
 
     procedure PrepareIPC();
     procedure OnRequest(Sender: TObject; const Command: UTF8String);
@@ -82,7 +82,8 @@ type
     destructor Destroy(); override;
     property Entry: PFilterDLL read GetEntry;
     property EntryAudio: PFilterDLL read GetEntryAudio;
-    property PlayModeComboBox: boolean read GetPlayModeComboBox write SetPlayModeComboBox;
+    property PlayModeComboBox: boolean read GetPlayModeComboBox
+      write SetPlayModeComboBox;
   end;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
@@ -133,11 +134,13 @@ end;
 
 function StoragePut(Key: PChar; Src: Pointer; Len: integer): integer; cdecl;
 begin
-  if Len > RamPreview.FMappedViewSize then begin
+  if Len > RamPreview.FMappedViewSize then
+  begin
     Result := 0;
     Exit;
   end;
-  if Len = 0 then begin
+  if Len = 0 then
+  begin
     RamPreview.DelS(Key);
     Result := 0;
     Exit;
@@ -194,9 +197,12 @@ function TRamPreview.MainProc(Window: HWND; Message: UINT; WP: WPARAM;
   LP: LPARAM; Edit: Pointer; Filter: PFilter): integer;
 const
   ExEditVersion = ' version 0.92 ';
-  ToggleModeCaption = #$93#$ae#$8d#$ec#$83#$82#$81#$5b#$83#$68#$90#$d8#$82#$e8#$91#$d6#$82#$a6#$81#$69#$92#$ca#$8f#$ed#$81#$5e#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$81#$6a; // 動作モード切り替え（通常／RAMプレビュー）
-  CaptureCaption = #$91#$49#$91#$f0#$94#$cd#$88#$cd#$82#$a9#$82#$e7#$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8d#$ec#$90#$ac#$81#$5E#$92#$86#$8E#$7E; // 選択範囲からキャッシュ作成／中止
-  ClearCacheCaption = #$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8f#$c1#$8b#$8e; // キャッシュ消去
+  ToggleModeCaption = #$93#$ae#$8d#$ec#$83#$82#$81#$5b#$83#$68#$90#$d8#$82#$e8#$91#$d6#$82#$a6#$81#$69#$92#$ca#$8f#$ed#$81#$5e#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$81#$6a;
+  // 動作モード切り替え（通常／RAMプレビュー）
+  CaptureCaption = #$91#$49#$91#$f0#$94#$cd#$88#$cd#$82#$a9#$82#$e7#$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8d#$ec#$90#$ac#$81#$5E#$92#$86#$8E#$7E;
+  // 選択範囲からキャッシュ作成／中止
+  ClearCacheCaption = #$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8f#$c1#$8b#$8e;
+  // キャッシュ消去
 var
   Y, Height: integer;
   NCM: TNonClientMetrics;
@@ -294,9 +300,12 @@ begin
         FOriginalExEditProc := FExEdit^.FuncProc;
         FOriginalExEditAudioProc := FExEditAudio^.FuncProc;
 
-        Filter^.ExFunc^.AddMenuItem(Filter, CaptureCaption, Window, 100, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL);
-        Filter^.ExFunc^.AddMenuItem(Filter, ClearCacheCaption, Window, 101, VK_E, ADD_MENU_ITEM_FLAG_KEY_CTRL);
-        Filter^.ExFunc^.AddMenuItem(Filter, ToggleModeCaption, Window, 102, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL or ADD_MENU_ITEM_FLAG_KEY_SHIFT);
+        Filter^.ExFunc^.AddMenuItem(Filter, CaptureCaption, Window,
+          100, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL);
+        Filter^.ExFunc^.AddMenuItem(Filter, ClearCacheCaption, Window,
+          101, VK_E, ADD_MENU_ITEM_FLAG_KEY_CTRL);
+        Filter^.ExFunc^.AddMenuItem(Filter, ToggleModeCaption, Window,
+          102, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL or ADD_MENU_ITEM_FLAG_KEY_SHIFT);
       except
         on E: Exception do
         begin
@@ -395,7 +404,8 @@ var
   SrcLine, DestLine: PByte;
 begin
   Result := True;
-  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then Exit;
+  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then
+    Exit;
   try
     Len := Get(fpip^.Frame);
     if (Len > SizeOf(TDataHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
@@ -433,7 +443,8 @@ var
   Len: integer;
 begin
   Result := True;
-  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then Exit;
+  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then
+    Exit;
   try
     Len := Get(-fpip^.Frame);
     if (Len > SizeOf(TDataHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
@@ -469,7 +480,8 @@ begin
     H := Max(SI.MaxH, 720);
     FMappedViewSize := W * H * SizeOf(TPixelYC);
     FMappedFile := CreateFileMappingW(INVALID_HANDLE_VALUE, nil,
-      PAGE_READWRITE, 0, DWORD((FMappedViewSize + SizeOf(TDataHeader)) and $ffffffff), nil);
+      PAGE_READWRITE, 0, DWORD((FMappedViewSize + SizeOf(TDataHeader)) and
+      $ffffffff), nil);
     if FMappedFile = 0 then
       raise Exception.Create('CreateFileMapping に失敗しました');
 
@@ -611,7 +623,8 @@ const
   V: array[boolean] of WPARAM = (0, 1);
 begin
   SendMessageW(FPlayModeList, LB_SETCURSEL, V[AValue], 0);
-  if FPlaying = AValue then Exit;
+  if FPlaying = AValue then
+    Exit;
   FPlaying := AValue;
   UpdateMode();
 end;
@@ -740,7 +753,8 @@ begin
   if Filter^.ExFunc^.GetFileInfo(Edit, @FI) = AVIUTL_FALSE then
     raise Exception.Create(
       '編集中のファイルの情報取得に失敗しました');
-  if (FI.Width = 0)or(FI.Height = 0) then Exit;
+  if (FI.Width = 0) or (FI.Height = 0) then
+    Exit;
   if Filter^.ExFunc^.GetSelectFrame(Edit, StartFrame, EndFrame) = AVIUTL_FALSE then
     raise Exception.Create('選択範囲を取得できませんでした');
 
@@ -788,7 +802,8 @@ begin
         FCacheHeight, 1, 0) = AVIUTL_FALSE then
         raise Exception.Create('SetYCPFilteringCacheSize に失敗しました');
 
-      Src := PByte(Filter^.ExFunc^.GetYCPFilteringCacheEx(Filter, Edit, FCurrentFrame, @W, @H));
+      Src := PByte(Filter^.ExFunc^.GetYCPFilteringCacheEx(Filter,
+        Edit, FCurrentFrame, @W, @H));
       if Src <> nil then
       begin
         SrcW := FCacheWidth * SizeOf(TPixelYC);
@@ -813,7 +828,8 @@ begin
 
     if FCurrentFrame < FEndFrame then
     begin
-      if GetTickCount() > FCacheSizeUpdatedAt + 500 then begin
+      if GetTickCount() > FCacheSizeUpdatedAt + 500 then
+      begin
         FCacheSizeUpdatedAt := GetTickCount();
         UpdateCacheSize(Edit, Filter);
       end;
@@ -837,7 +853,8 @@ begin
       UpdateMode();
     end;
   except
-    on E: Exception do begin
+    on E: Exception do
+    begin
       MessageBoxW(FWindow, PWideChar(
         WideString('処理中にエラーが発生しました。'#13#10#13#10 +
         WideString(E.Message))),
@@ -856,7 +873,8 @@ end;
 
 procedure TRamPreview.ClearCache(Edit: Pointer; Filter: PFilter);
 begin
-  if not FRemoteProcess.Running then Exit;
+  if not FRemoteProcess.Running then
+    Exit;
   Clear();
   UpdateCacheSize(Edit, Filter);
   PlayModeComboBox := False;
@@ -873,12 +891,15 @@ end;
 
 procedure TRamPreview.UpdateMode();
 begin
-  if FPlaying and (not FCapturing) and (FStartFrame = FEndFrame) then begin
+  if FPlaying and (not FCapturing) and (FStartFrame = FEndFrame) then
+  begin
     FExEdit^.FuncProc := @DummyFuncProc;
     FExEditAudio^.FuncProc := @DummyFuncProc;
-  end else begin
+  end
+  else
+  begin
     FExEdit^.FuncProc := FOriginalExEditProc;
-    FExEditAudio^.FuncProc:= FOriginalExEditAudioProc;
+    FExEditAudio^.FuncProc := FOriginalExEditAudioProc;
   end;
 end;
 
@@ -937,7 +958,8 @@ begin
   case SendMessageW(FPlayModeList, LB_GETCURSEL, 0, 0) of
     0: Result := False;
     1: Result := True;
-    else raise Exception.Create('unexpected play mode value');
+    else
+      raise Exception.Create('unexpected play mode value');
   end;
 end;
 
