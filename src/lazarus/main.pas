@@ -6,7 +6,7 @@ unit Main;
 interface
 
 uses
-  Windows, SysUtils, Classes, Process, Remote, AviUtl;
+  Windows, SysUtils, Classes, Process, Remote, AviUtl, StorageAPI;
 
 type
   TDataHeader = record
@@ -32,6 +32,7 @@ type
     FMappedFile: THandle;
     FMappedViewHeader: PDataHeader;
     FMappedViewData: PByte;
+    FMappedViewSize: integer;
 
     FCapturing: boolean;
     FPlaying: boolean;
@@ -52,6 +53,11 @@ type
     function Stat(): QWord;
     procedure Put(const Key: integer; const Size: integer);
     function Get(const Key: integer): integer;
+
+    procedure ClearS();
+    procedure PutS(const Key: string; const Size: integer);
+    function GetS(const Key: string): integer;
+    function DelS(const Key: string): integer;
 
     procedure CaptureRange(Edit: Pointer; Filter: PFilter);
     procedure Capturing(Edit: Pointer; Filter: PFilter);
@@ -78,6 +84,7 @@ type
   end;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
+function GetStorageAPI(): PStorageAPI; cdecl;
 
 var
   RamPreview: TRamPreview;
@@ -104,10 +111,48 @@ const
 
 var
   FilterDLLList: array of PFilterDLL;
+  Storage: TStorageAPI;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
 begin
   Result := @FilterDLLList[0];
+end;
+
+function StorageGetMaxBufferSize(): integer; cdecl;
+begin
+  Result := RamPreview.FMappedViewSize;
+end;
+
+function StorageGet(Key: PChar; Dest: Pointer): integer; cdecl;
+begin
+  Result := RamPreview.GetS(Key);
+  Move(RamPreview.FMappedViewData^, Dest^, Result);
+end;
+
+function StoragePut(Key: PChar; Src: Pointer; Len: integer): integer; cdecl;
+begin
+  if Len > RamPreview.FMappedViewSize then begin
+    Result := 0;
+    Exit;
+  end;
+  if Len = 0 then begin
+    RamPreview.DelS(Key);
+    Result := 0;
+    Exit;
+  end;
+  Move(Src^, RamPreview.FMappedViewData^, Len);
+  RamPreview.PutS(Key, Len);
+  Result := Len;
+end;
+
+procedure StorageDel(Key: PChar); cdecl;
+begin
+  RamPreview.DelS(Key);
+end;
+
+function GetStorageAPI(): PStorageAPI; cdecl;
+begin
+  Result := @Storage;
 end;
 
 function FilterFuncInit(fp: PFilter): AviUtlBool; cdecl;
@@ -434,7 +479,6 @@ function TRamPreview.InitProc(Filter: PFilter): boolean;
 var
   SI: TSysInfo;
   W, H: integer;
-  Size: QWord;
   P: Pointer;
 begin
   Result := True;
@@ -444,9 +488,9 @@ begin
 
     W := Max(SI.MaxW, 1280);
     H := Max(SI.MaxH, 720);
-    Size := W * H * SizeOf(TPixelYC) + SizeOf(TDataHeader);
+    FMappedViewSize := W * H * SizeOf(TPixelYC);
     FMappedFile := CreateFileMappingW(INVALID_HANDLE_VALUE, nil,
-      PAGE_READWRITE, DWORD(Size shr 32), DWORD(Size and $ffffffff), nil);
+      PAGE_READWRITE, 0, DWORD((FMappedViewSize + SizeOf(TDataHeader)) and $ffffffff), nil);
     if FMappedFile = 0 then
       raise Exception.Create('CreateFileMapping に失敗しました');
 
@@ -639,6 +683,66 @@ begin
   finally
     FReceiver.Done();
   end;
+end;
+
+procedure TRamPreview.ClearS();
+begin
+  EnterCS('CLRS');
+  try
+    PrepareIPC();
+    FRemoteProcess.Input.WriteBuffer('CLRS', 4);
+  finally
+    LeaveCS('CLRS');
+  end;
+  FReceiver.WaitResult();
+  FReceiver.Done();
+end;
+
+procedure TRamPreview.PutS(const Key: string; const Size: integer);
+begin
+  EnterCS('PUTS');
+  try
+    PrepareIPC();
+    FRemoteProcess.Input.WriteBuffer('PUTS', 4);
+    WriteString(FRemoteProcess.Input, Key);
+    WriteInt32(FRemoteProcess.Input, Size);
+  finally
+    LeaveCS('PUTS');
+  end;
+  FReceiver.WaitResult();
+  FReceiver.Done();
+end;
+
+function TRamPreview.GetS(const Key: string): integer;
+begin
+  EnterCS('GETS');
+  try
+    PrepareIPC();
+    FRemoteProcess.Input.WriteBuffer('GETS', 4);
+    WriteString(FRemoteProcess.Input, Key);
+  finally
+    LeaveCS('GETS');
+  end;
+  FReceiver.WaitResult();
+  try
+    Result := FReceiver.ReadInt32();
+  finally
+    FReceiver.Done();
+  end;
+end;
+
+function TRamPreview.DelS(const Key: string): integer;
+begin
+  EnterCS('DELS');
+  try
+    PrepareIPC();
+    FRemoteProcess.Input.WriteBuffer('DELS', 4);
+    WriteString(FRemoteProcess.Input, Key);
+  finally
+    LeaveCS('DELS');
+  end;
+  FReceiver.WaitResult();
+  FReceiver.Done();
 end;
 
 procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
@@ -848,6 +952,11 @@ initialization
   FilterDLLList[0] := RamPreview.Entry;
   FilterDLLList[1] := RamPreview.EntryAudio;
   FilterDLLList[2] := nil;
+
+  Storage.GetMaxBufferSize:=@StorageGetMaxBufferSize;
+  Storage.Get:=@StorageGet;
+  Storage.Put:=@StoragePut;
+  Storage.Del:=@StorageDel;
 
 finalization
   RamPreview.Free();

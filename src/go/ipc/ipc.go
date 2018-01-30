@@ -17,6 +17,8 @@ import (
 
 type IPC struct {
 	cache   map[int][]byte
+	storage map[string][]byte
+
 	mappedFile syscall.Handle
 	mappedView uintptr
 	reply      chan error
@@ -90,6 +92,62 @@ func (ipc *IPC) dispatch(cmd string) error {
 		}
 		return err
 
+	case "CLR ":
+		ipc.cache = map[int][]byte{}
+		runtime.GC()
+		debug.FreeOSMemory()
+		return writeUint32(0x80000000)
+
+	case "PUTS":
+		key, err := readString()
+		if err != nil {
+			return err
+		}
+		size, err := readInt32()
+		if err != nil {
+			return err
+		}
+		if ipc.mappedFile == 0 || ipc.mappedView == 0 {
+			return errors.New("not initialized yet")
+		}
+		buf := make([]byte, size)
+		copy(buf, ((*[1 << 49]byte)(unsafe.Pointer(ipc.mappedView)))[:size:size])
+		ipc.storage[key] = buf
+		return writeUint32(0x80000000)
+
+	case "DELS":
+		key, err := readString()
+		if err != nil {
+			return err
+		}
+		delete(ipc.storage, key)
+		return writeUint32(0x80000000)
+
+	case "GETS":
+		key, err := readString()
+		if err != nil {
+			return err
+		}
+		if ipc.mappedFile == 0 || ipc.mappedView == 0 {
+			return errors.New("not initialized yet")
+		}
+		if err = writeUint32(0x80000000); err != nil {
+			return err
+		}
+		if buf, ok := ipc.storage[key]; ok {
+			copy(((*[1 << 49]byte)(unsafe.Pointer(ipc.mappedView)))[:], buf)
+			err = writeInt32(int32(len(buf)))
+		} else {
+			err = writeInt32(0)
+		}
+		return err
+
+	case "CLRS":
+		ipc.storage = map[string][]byte{}
+		runtime.GC()
+		debug.FreeOSMemory()
+		return writeUint32(0x80000000)
+
 	case "STAT":
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
@@ -97,12 +155,6 @@ func (ipc *IPC) dispatch(cmd string) error {
 			return err
 		}
 		return writeUint64(m.Alloc)
-
-	case "CLR ":
-		ipc.cache = map[int][]byte{}
-		runtime.GC()
-		debug.FreeOSMemory()
-		return writeUint32(0x80000000)
 	}
 	return errors.New("unknown command")
 }
@@ -187,6 +239,7 @@ func (ipc *IPC) Main(exitCh chan<- struct{}) {
 func New() *IPC {
 	r := &IPC{
 		cache:   map[int][]byte{},
+		storage: map[string][]byte{},
 
 		reply:     make(chan error),
 		replyDone: make(chan struct{}),

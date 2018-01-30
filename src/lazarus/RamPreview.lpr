@@ -6,10 +6,11 @@ library RamPreview;
 uses
   SysUtils,
   AviUtl,
-  Main, Remote, Util;
+  Main, Remote, Util, StorageAPI;
 
 exports
-  GetFilterTableList;
+  GetFilterTableList,
+  GetStorageAPI;
 
 initialization
   SetMultiByteConversionCodePage(CP_UTF8);
