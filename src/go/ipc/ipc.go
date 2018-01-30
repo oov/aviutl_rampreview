@@ -16,7 +16,7 @@ import (
 )
 
 type IPC struct {
-	test       map[int][]byte
+	cache   map[int][]byte
 	mappedFile syscall.Handle
 	mappedView uintptr
 	reply      chan error
@@ -68,7 +68,7 @@ func (ipc *IPC) dispatch(cmd string) error {
 		}
 		buf := make([]byte, size)
 		copy(buf, ((*[1 << 49]byte)(unsafe.Pointer(ipc.mappedView)))[:size:size])
-		ipc.test[key] = buf
+		ipc.cache[key] = buf
 		return writeUint32(0x80000000)
 
 	case "GET ":
@@ -82,7 +82,7 @@ func (ipc *IPC) dispatch(cmd string) error {
 		if err = writeUint32(0x80000000); err != nil {
 			return err
 		}
-		if buf, ok := ipc.test[key]; ok {
+		if buf, ok := ipc.cache[key]; ok {
 			copy(((*[1 << 49]byte)(unsafe.Pointer(ipc.mappedView)))[:], buf)
 			err = writeInt32(int32(len(buf)))
 		} else {
@@ -99,7 +99,7 @@ func (ipc *IPC) dispatch(cmd string) error {
 		return writeUint64(m.Alloc)
 
 	case "CLR ":
-		ipc.test = map[int][]byte{}
+		ipc.cache = map[int][]byte{}
 		runtime.GC()
 		debug.FreeOSMemory()
 		return writeUint32(0x80000000)
@@ -186,7 +186,7 @@ func (ipc *IPC) Main(exitCh chan<- struct{}) {
 
 func New() *IPC {
 	r := &IPC{
-		test: map[int][]byte{},
+		cache:   map[int][]byte{},
 
 		reply:     make(chan error),
 		replyDone: make(chan struct{}),
