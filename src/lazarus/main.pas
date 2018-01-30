@@ -43,6 +43,7 @@ type
     FCacheWidth, FCacheHeight: integer;
     FAudioChannels: integer;
     FAudioBuffer: Pointer;
+    FCacheSizeUpdatedAt: Cardinal;
 
     procedure PrepareIPC();
     procedure OnRequest(Sender: TObject; const Command: UTF8String);
@@ -64,6 +65,7 @@ type
     procedure ClearCache(Edit: Pointer; Filter: PFilter);
     procedure UpdateCacheSize(Edit: Pointer; Filter: PFilter);
 
+    procedure UpdateMode();
     function GetPlayModeComboBox: boolean;
     procedure SetPlayModeComboBox(AValue: boolean);
     function GetEntry: PFilterDLL;
@@ -160,22 +162,9 @@ begin
   Result := BoolConv[RamPreview.InitProc(fp)];
 end;
 
-function ExEditDummyFuncProc(fp: PFilter; fpip: PFilterProcInfo): AviUtlBool; cdecl;
+function DummyFuncProc(fp: PFilter; fpip: PFilterProcInfo): AviUtlBool; cdecl;
 begin
-  if RamPreview.FPlaying and (not RamPreview.FCapturing) and
-    (RamPreview.FStartFrame = RamPreview.FEndFrame) then
-    Result := BoolConv[True]
-  else
-    Result := RamPreview.FOriginalExEditProc(fp, fpip);
-end;
-
-function ExEditAudioDummyFuncProc(fp: PFilter; fpip: PFilterProcInfo): AviUtlBool; cdecl;
-begin
-  if RamPreview.FPlaying and (not RamPreview.FCapturing) and
-    (RamPreview.FStartFrame = RamPreview.FEndFrame) then
-    Result := BoolConv[True]
-  else
-    Result := RamPreview.FOriginalExEditAudioProc(fp, fpip);
+  Result := AVIUTL_TRUE;
 end;
 
 function FilterFuncProc(fp: PFilter; fpip: PFilterProcInfo): AviUtlBool; cdecl;
@@ -303,15 +292,11 @@ begin
             ' を使うには AviUtl version 1.00 以降が必要です。');
 
         FOriginalExEditProc := FExEdit^.FuncProc;
-        FExEdit^.FuncProc := @ExEditDummyFuncProc;
         FOriginalExEditAudioProc := FExEditAudio^.FuncProc;
-        FExEditAudio^.FuncProc := @ExEditAudioDummyFuncProc;
 
         Filter^.ExFunc^.AddMenuItem(Filter, CaptureCaption, Window, 100, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL);
         Filter^.ExFunc^.AddMenuItem(Filter, ClearCacheCaption, Window, 101, VK_E, ADD_MENU_ITEM_FLAG_KEY_CTRL);
         Filter^.ExFunc^.AddMenuItem(Filter, ToggleModeCaption, Window, 102, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL or ADD_MENU_ITEM_FLAG_KEY_SHIFT);
-
-        SetTimer(Filter^.Hwnd, 100, 3000, nil);
       except
         on E: Exception do
         begin
@@ -329,11 +314,11 @@ begin
     end;
     WM_FILTER_FILE_OPEN:
     begin
-      if FRemoteProcess.Running then Clear();
+      ClearCache(Edit, Filter);
     end;
     WM_FILTER_FILE_CLOSE:
     begin
-      if FRemoteProcess.Running then Clear();
+      ClearCache(Edit, Filter);
     end;
     WM_FILTER_EXIT:
     begin
@@ -348,6 +333,7 @@ begin
           begin
             if HIWORD(WP) = LBN_SELCHANGE then
               FPlaying := PlayModeComboBox;
+            UpdateMode();
           end;
           2: CaptureRange(Edit, Filter);
           4: ClearCache(Edit, Filter);
@@ -386,7 +372,6 @@ begin
             KillTimer(Filter^.Hwnd, FTimer);
             Capturing(Edit, Filter);
           end;
-          100: UpdateCacheSize(Edit, Filter);
         end;
       except
         on E: Exception do
@@ -410,32 +395,29 @@ var
   SrcLine, DestLine: PByte;
 begin
   Result := True;
+  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then Exit;
   try
-    if FPlaying and (not FCapturing) and (RamPreview.FStartFrame =
-      RamPreview.FEndFrame) then
+    Len := Get(fpip^.Frame);
+    if (Len > SizeOf(TDataHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
     begin
-      Len := Get(fpip^.Frame);
-      if (Len > SizeOf(TDataHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
+      fpip^.X := FMappedViewHeader^.A;
+      fpip^.Y := FMappedViewHeader^.B;
+      Width := fpip^.X * fpip^.YCSize;
+      SrcLine := Self.FMappedViewData;
+      DestLine := fpip^.YCPEdit;
+      LineSize := fpip^.LineSize;
+      for Y := 0 to fpip^.Y - 1 do
       begin
-        fpip^.X := FMappedViewHeader^.A;
-        fpip^.Y := FMappedViewHeader^.B;
-        Width := fpip^.X * fpip^.YCSize;
-        SrcLine := Self.FMappedViewData;
-        DestLine := fpip^.YCPEdit;
-        LineSize := fpip^.LineSize;
-        for Y := 0 to fpip^.Y - 1 do
-        begin
-          Move(SrcLine^, DestLine^, Width);
-          Inc(SrcLine, Width);
-          Inc(DestLine, LineSize);
-        end;
-      end
-      else
-      begin
-        S := Format('Frame %d: no cache', [fpip^.Frame]);
-        fp^.ExFunc^.DrawText(fpip^.YCPEdit, 0, 0, PChar(S), 255, 255,
-          255, 0, 0, nil, nil);
+        Move(SrcLine^, DestLine^, Width);
+        Inc(SrcLine, Width);
+        Inc(DestLine, LineSize);
       end;
+    end
+    else
+    begin
+      S := Format('Frame %d: no cache', [fpip^.Frame]);
+      fp^.ExFunc^.DrawText(fpip^.YCPEdit, 0, 0, PChar(S), 255, 255,
+        255, 0, 0, nil, nil);
     end;
   except
     on E: Exception do
@@ -448,19 +430,16 @@ end;
 
 function TRamPreview.FilterAudioProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
 var
-  len: integer;
+  Len: integer;
 begin
   Result := True;
+  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then Exit;
   try
-    if FPlaying and (not FCapturing) and (RamPreview.FStartFrame =
-      RamPreview.FEndFrame) then
-    begin
-      len := Get(-fpip^.Frame);
-      if (len > SizeOf(TDataHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
-        (FMappedViewHeader^.B = fpip^.AudioCh) then
-        Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
-          fpip^.AudioN * SizeOf(smallint));
-    end;
+    Len := Get(-fpip^.Frame);
+    if (Len > SizeOf(TDataHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
+      (FMappedViewHeader^.B = fpip^.AudioCh) then
+      Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
+        fpip^.AudioN * SizeOf(smallint));
   except
     on E: Exception do
       MessageBoxW(FWindow, PWideChar(
@@ -632,7 +611,9 @@ const
   V: array[boolean] of WPARAM = (0, 1);
 begin
   SendMessageW(FPlayModeList, LB_SETCURSEL, V[AValue], 0);
+  if FPlaying = AValue then Exit;
   FPlaying := AValue;
+  UpdateMode();
 end;
 
 function TRamPreview.Stat(): QWord;
@@ -790,6 +771,7 @@ var
 begin
   try
     FCapturing := True;
+    UpdateMode();
     try
       Samples := Filter^.ExFunc^.GetAudioFiltering(Filter, Edit,
         FCurrentFrame, FAudioBuffer);
@@ -826,11 +808,17 @@ begin
       end;
     finally
       FCapturing := False;
+      UpdateMode();
     end;
 
-    Filter^.ExFunc^.SetFrame(Edit, FCurrentFrame);
     if FCurrentFrame < FEndFrame then
     begin
+      if GetTickCount() > FCacheSizeUpdatedAt + 500 then begin
+        FCacheSizeUpdatedAt := GetTickCount();
+        UpdateCacheSize(Edit, Filter);
+      end;
+
+      Filter^.ExFunc^.SetFrame(Edit, FCurrentFrame);
       Inc(FCurrentFrame);
       UpdateStatus(WideString(Format('%d / %d', [FCurrentFrame -
         FStartFrame, FEndFrame - FStartFrame])));
@@ -838,13 +826,15 @@ begin
     end
     else
     begin
-      SetWindowTextW(FCacheCreateButton, CreateButtonCaption[False]);
-      UpdateStatus('');
       Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
+      SetWindowTextW(FCacheCreateButton, CreateButtonCaption[False]);
+      UpdateCacheSize(Edit, Filter);
+      UpdateStatus('');
       FStartFrame := 0;
       FEndFrame := 0;
       FCurrentFrame := 0;
       PlayModeComboBox := True;
+      UpdateMode();
     end;
   except
     on E: Exception do begin
@@ -859,6 +849,7 @@ begin
       FStartFrame := 0;
       FEndFrame := 0;
       FCurrentFrame := 0;
+      UpdateMode();
     end;
   end;
 end;
@@ -867,6 +858,7 @@ procedure TRamPreview.ClearCache(Edit: Pointer; Filter: PFilter);
 begin
   if not FRemoteProcess.Running then Exit;
   Clear();
+  UpdateCacheSize(Edit, Filter);
   PlayModeComboBox := False;
 end;
 
@@ -877,6 +869,17 @@ begin
       PWideChar(WideString(BytesToStr(Stat()))))
   else
     SetWindowTextW(FCacheSizeLabel, '');
+end;
+
+procedure TRamPreview.UpdateMode();
+begin
+  if FPlaying and (not FCapturing) and (FStartFrame = FEndFrame) then begin
+    FExEdit^.FuncProc := @DummyFuncProc;
+    FExEditAudio^.FuncProc := @DummyFuncProc;
+  end else begin
+    FExEdit^.FuncProc := FOriginalExEditProc;
+    FExEditAudio^.FuncProc:= FOriginalExEditAudioProc;
+  end;
 end;
 
 procedure TRamPreview.PrepareIPC();
