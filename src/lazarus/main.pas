@@ -192,6 +192,7 @@ end;
 function TRamPreview.MainProc(Window: HWND; Message: UINT; WP: WPARAM;
   LP: LPARAM; Edit: Pointer; Filter: PFilter): integer;
 const
+  PROCESSOR_ARCHITECTURE_AMD64 = 9;
   ExEditVersion = ' version 0.92 ';
   ToggleModeCaption = #$93#$ae#$8d#$ec#$83#$82#$81#$5b#$83#$68#$90#$d8#$82#$e8#$91#$d6#$82#$a6#$81#$69#$92#$ca#$8f#$ed#$81#$5e#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$81#$6a;
   // 動作モード切り替え（通常／RAMプレビュー）
@@ -205,6 +206,7 @@ var
   DC: THandle;
   sinfo: TSysInfo;
   fp: PFilter;
+  si: SYSTEM_INFO;
 begin
   case Message of
     WM_FILTER_INIT:
@@ -282,6 +284,9 @@ begin
         2, Y, SWP_NOMOVE or SWP_NOZORDER);
 
       try
+        GetNativeSystemInfo(@si);
+        if si.wProcessorArchitecture <> PROCESSOR_ARCHITECTURE_AMD64 then
+          raise Exception.Create(PluginName+' をを使うには 64bit 版の Windows が必要です。');
         if (not Assigned(FExEdit)) or (not Assigned(FExEditAudio)) then
           raise Exception.Create(
             '拡張編集プラグインが見つかりません。');
