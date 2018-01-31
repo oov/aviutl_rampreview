@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectOptions>
+    <Version Value="10"/>
+    <PathDelim Value="\"/>
+    <General>
+      <Flags>
+        <SaveClosedFiles Value="False"/>
+        <MainUnitHasCreateFormStatements Value="False"/>
+        <MainUnitHasTitleStatement Value="False"/>
+        <SaveJumpHistory Value="False"/>
+        <SaveFoldState Value="False"/>
+      </Flags>
+      <SessionStorage Value="None"/>
+      <MainUnit Value="0"/>
+      <Title Value="Extram"/>
+      <UseAppBundle Value="False"/>
+      <ResourceType Value="res"/>
+    </General>
+    <i18n>
+      <EnableI18N LFM="False"/>
+    </i18n>
+    <BuildModes Count="1">
+      <Item1 Name="Default" Default="True"/>
+    </BuildModes>
+    <PublishOptions>
+      <Version Value="2"/>
+    </PublishOptions>
+    <RunParams>
+      <local>
+        <FormatVersion Value="1"/>
+      </local>
+    </RunParams>
+    <Units Count="5">
+      <Unit0>
+        <Filename Value="extram.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Extram"/>
+      </Unit0>
+      <Unit1>
+        <Filename Value="extrammain.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="ExtramMain"/>
+      </Unit1>
+      <Unit2>
+        <Filename Value="lua.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Lua"/>
+      </Unit2>
+      <Unit3>
+        <Filename Value="luafuncs.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="LuaFuncs"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="storageapi.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="StorageAPI"/>
+      </Unit4>
+    </Units>
+  </ProjectOptions>
+  <CompilerOptions>
+    <Version Value="11"/>
+    <PathDelim Value="\"/>
+    <Target>
+      <Filename Value="..\..\bin\script\Extram.dll" ApplyConventions="False"/>
+    </Target>
+    <SearchPaths>
+      <IncludeFiles Value="$(ProjOutDir)"/>
+      <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
+    </SearchPaths>
+    <CodeGeneration>
+      <RelocatableUnit Value="True"/>
+      <Optimizations>
+        <OptimizationLevel Value="4"/>
+      </Optimizations>
+    </CodeGeneration>
+    <Linking>
+      <Debugging>
+        <GenerateDebugInfo Value="False"/>
+        <StripSymbols Value="True"/>
+      </Debugging>
+      <Options>
+        <ExecutableType Value="Library"/>
+      </Options>
+    </Linking>
+  </CompilerOptions>
+  <Debugging>
+    <Exceptions Count="3">
+      <Item1>
+        <Name Value="EAbort"/>
+      </Item1>
+      <Item2>
+        <Name Value="ECodetoolError"/>
+      </Item2>
+      <Item3>
+        <Name Value="EFOpenError"/>
+      </Item3>
+    </Exceptions>
+  </Debugging>
+</CONFIG>

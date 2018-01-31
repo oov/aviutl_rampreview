@@ -1,6 +1,6 @@
 #!/bin/bash
 
-mkdir bin
+mkdir bin bin/script
 
 # copy readme
 sed 's/\r$//' README.md | sed 's/$/\r/' > bin/README.txt
@@ -36,7 +36,10 @@ popd
 
 # build lazarus projects
 cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/RamPreview.lpi
+cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/Extram.lpi
 
 # install
+# mkdir aviutl/script
 # cp bin/ZRamPreview.auf aviutl/
 # cp bin/ZRamPreview.exe aviutl/
+# cp bin/script/Extram.dll aviutl/script/

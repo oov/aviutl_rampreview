@@ -9,11 +9,6 @@ uses
   Windows, SysUtils, Classes, Process, Remote, AviUtl, StorageAPI;
 
 type
-  TDataHeader = record
-    A, B, C, D: integer;
-  end;
-  PDataHeader = ^TDataHeader;
-
   { TRamPreview }
 
   TRamPreview = class
@@ -22,7 +17,7 @@ type
     FReceiver: TReceiver;
     FCS: TRTLCriticalSection;
 
-    FEntry, FEntryAudio: TFilterDLL;
+    FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
     FExEdit, FExEditAudio: PFilter;
     FWindow, FFont, FPlayModeList, FCacheCreateButton, FCacheClearButton,
     FCacheSizeLabel, FStatusLabel: THandle;
@@ -30,9 +25,8 @@ type
     FOriginalExEditProc, FOriginalExEditAudioProc: TProcFunc;
 
     FMappedFile: THandle;
-    FMappedViewHeader: PDataHeader;
-    FMappedViewData: PByte;
-    FMappedViewSize: integer;
+    FMappedViewHeader: PViewHeader;
+    FMappedViewData: Pointer;
 
     FCapturing: boolean;
     FPlaying: boolean;
@@ -65,11 +59,14 @@ type
     procedure ClearCache(Edit: Pointer; Filter: PFilter);
     procedure UpdateCacheSize(Edit: Pointer; Filter: PFilter);
 
+    procedure ClearStorageCache(Edit: Pointer; Filter: PFilter);
+
     procedure UpdateMode();
     function GetPlayModeComboBox: boolean;
     procedure SetPlayModeComboBox(AValue: boolean);
     function GetEntry: PFilterDLL;
     function GetEntryAudio: PFilterDLL;
+    function GetEntryExtram: PFilterDLL;
     function InitProc(Filter: PFilter): boolean;
     function ExitProc(Filter: PFilter): boolean;
     function MainProc(Window: HWND; Message: UINT; WP: WPARAM;
@@ -82,6 +79,7 @@ type
     destructor Destroy(); override;
     property Entry: PFilterDLL read GetEntry;
     property EntryAudio: PFilterDLL read GetEntryAudio;
+    property EntryExtram: PFilterDLL read GetEntryExtram;
     property PlayModeComboBox: boolean read GetPlayModeComboBox
       write SetPlayModeComboBox;
   end;
@@ -103,6 +101,9 @@ const
   PluginInfoANSI = PluginNameANSI + ' ' + Version;
   PluginNameAudioANSI = #$8a#$67#$92#$a3#$95#$d2#$8f#$57#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$28#$89#$b9#$90#$ba#$29;
   PluginInfoAudioANSI = PluginNameAudioANSI + ' ' + Version;
+  PluginNameExtramANSI = 'Extram';
+  PluginInfoExtramANSI = PluginNameExtramANSI + ' ' + Version;
+
   ExEditNameANSI = #$8a#$67#$92#$a3#$95#$d2#$8f#$57; // '拡張編集'
   ExEditAudioNameANSI = #$8a#$67#$92#$a3#$95#$d2#$8f#$57#$28#$89#$b9#$90#$ba#$29;
 // '拡張編集(音声)'
@@ -121,32 +122,18 @@ begin
   Result := @FilterDLLList[0];
 end;
 
-function StorageGetMaxBufferSize(): integer; cdecl;
+function StorageGet(Key: PChar): integer; cdecl;
 begin
-  Result := RamPreview.FMappedViewSize;
+  Result := RamPreview.GetS(Key) - SizeOf(TViewHeader);
 end;
 
-function StorageGet(Key: PChar; Dest: Pointer): integer; cdecl;
+function StoragePut(Key: PChar; Len: integer): integer; cdecl;
 begin
-  Result := RamPreview.GetS(Key);
-  Move(RamPreview.FMappedViewData^, Dest^, Result);
-end;
-
-function StoragePut(Key: PChar; Src: Pointer; Len: integer): integer; cdecl;
-begin
-  if Len > RamPreview.FMappedViewSize then
-  begin
+  if Len > Storage.ViewLen then begin
     Result := 0;
     Exit;
   end;
-  if Len = 0 then
-  begin
-    RamPreview.DelS(Key);
-    Result := 0;
-    Exit;
-  end;
-  Move(Src^, RamPreview.FMappedViewData^, Len);
-  RamPreview.PutS(Key, Len);
+  RamPreview.PutS(Key, Len + SizeOf(TViewHeader));
   Result := Len;
 end;
 
@@ -163,6 +150,15 @@ end;
 function FilterFuncInit(fp: PFilter): AviUtlBool; cdecl;
 begin
   Result := BoolConv[RamPreview.InitProc(fp)];
+end;
+
+function FilterExtramFuncInit(fp: PFilter): AviUtlBool; cdecl;
+const
+  ClearCacheCaption = #$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8f#$c1#$8b#$8e;
+  // キャッシュ消去
+begin
+  Result := AVIUTL_TRUE;
+  fp^.ExFunc^.AddMenuItem(fp, ClearCacheCaption, RamPreview.FWindow, 103, 0, 0);
 end;
 
 function DummyFuncProc(fp: PFilter; fpip: PFilterProcInfo): AviUtlBool; cdecl;
@@ -213,7 +209,6 @@ begin
   case Message of
     WM_FILTER_INIT:
     begin
-      FWindow := Window;
       if Filter^.ExFunc^.GetSysInfo(Edit, @sinfo) <> AVIUTL_FALSE then
       begin
         for Y := 0 to sinfo.FilterN - 1 do
@@ -362,6 +357,7 @@ begin
           100: CaptureRange(Edit, Filter);
           101: ClearCache(Edit, Filter);
           102: PlayModeComboBox := not PlayModeComboBox;
+          103: ClearStorageCache(Edit, Filter);
         end;
       except
         on E: Exception do
@@ -408,7 +404,7 @@ begin
     Exit;
   try
     Len := Get(fpip^.Frame);
-    if (Len > SizeOf(TDataHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
+    if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
     begin
       fpip^.X := FMappedViewHeader^.A;
       fpip^.Y := FMappedViewHeader^.B;
@@ -447,7 +443,7 @@ begin
     Exit;
   try
     Len := Get(-fpip^.Frame);
-    if (Len > SizeOf(TDataHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
+    if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
       (FMappedViewHeader^.B = fpip^.AudioCh) then
       Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
         fpip^.AudioN * SizeOf(smallint));
@@ -468,7 +464,7 @@ end;
 function TRamPreview.InitProc(Filter: PFilter): boolean;
 var
   SI: TSysInfo;
-  W, H: integer;
+  W, H, Len: integer;
   P: Pointer;
 begin
   Result := True;
@@ -478,9 +474,9 @@ begin
 
     W := Max(SI.MaxW, 1280);
     H := Max(SI.MaxH, 720);
-    FMappedViewSize := W * H * SizeOf(TPixelYC);
+    Len := W * H * SizeOf(TPixelYC);
     FMappedFile := CreateFileMappingW(INVALID_HANDLE_VALUE, nil,
-      PAGE_READWRITE, 0, DWORD((FMappedViewSize + SizeOf(TDataHeader)) and
+      PAGE_READWRITE, 0, DWORD((Len + SizeOf(TViewHeader)) and
       $ffffffff), nil);
     if FMappedFile = 0 then
       raise Exception.Create('CreateFileMapping に失敗しました');
@@ -490,7 +486,13 @@ begin
       raise Exception.Create('MapViewOfFile に失敗しました');
     FMappedViewHeader := P;
     FMappedViewData := P;
-    Inc(FMappedViewData, SizeOf(TDataHeader));
+    Inc(FMappedViewData, SizeOf(TViewHeader));
+
+    Storage.ViewHeader := FMappedViewHeader;
+    Storage.View := FMappedViewData;
+    Storage.ViewLen := Len;
+
+    FWindow := Filter^.Hwnd;
   except
     on E: Exception do
       MessageBoxW(Filter^.Hwnd,
@@ -557,6 +559,12 @@ begin
     FILTER_FLAG_NO_CONFIG or FILTER_FLAG_RADIO_BUTTON;
   FEntryAudio.Name := PluginNameAudioANSI;
   FEntryAudio.Information := PluginInfoAudioANSI;
+
+  FillChar(FEntryExtram, SizeOf(FEntryExtram), 0);
+  FEntryExtram.Flag := FILTER_FLAG_ALWAYS_ACTIVE or FILTER_FLAG_EX_INFORMATION or
+    FILTER_FLAG_DISP_FILTER or FILTER_FLAG_NO_CONFIG or FILTER_FLAG_RADIO_BUTTON;
+  FEntryExtram.Name := PluginNameExtramANSI;
+  FEntryExtram.Information := PluginInfoExtramANSI;
 end;
 
 destructor TRamPreview.Destroy();
@@ -795,7 +803,7 @@ begin
         FMappedViewHeader^.A := Samples;
         FMappedViewHeader^.B := FAudioChannels;
         Move(FAudioBuffer^, FMappedViewData^, W);
-        Put(-FCurrentFrame, W + SizeOf(TDataHeader));
+        Put(-FCurrentFrame, W + SizeOf(TViewHeader));
       end;
 
       if Filter^.ExFunc^.SetYCPFilteringCacheSize(Filter, FCacheWidth,
@@ -819,7 +827,7 @@ begin
           Inc(Src, SrcW);
           Inc(Dest, DestW);
         end;
-        Put(FCurrentFrame, DestW * H + SizeOf(TDataHeader));
+        Put(FCurrentFrame, DestW * H + SizeOf(TViewHeader));
       end;
     finally
       FCapturing := False;
@@ -889,6 +897,14 @@ begin
     SetWindowTextW(FCacheSizeLabel, '');
 end;
 
+procedure TRamPreview.ClearStorageCache(Edit: Pointer; Filter: PFilter);
+begin
+  if not FRemoteProcess.Running then
+    Exit;
+  ClearS();
+  UpdateCacheSize(Edit, Filter);
+end;
+
 procedure TRamPreview.UpdateMode();
 begin
   if FPlaying and (not FCapturing) and (FStartFrame = FEndFrame) then
@@ -953,6 +969,11 @@ begin
   FReceiver.Done();
 end;
 
+function TRamPreview.GetEntryExtram: PFilterDLL;
+begin
+  Result := @FEntryExtram;
+end;
+
 function TRamPreview.GetPlayModeComboBox: boolean;
 begin
   case SendMessageW(FPlayModeList, LB_GETCURSEL, 0, 0) of
@@ -970,13 +991,14 @@ initialization
   RamPreview.Entry^.FuncWndProc := @FilterFuncWndProc;
   RamPreview.Entry^.FuncProc := @FilterFuncProc;
   RamPreview.EntryAudio^.FuncProc := @FilterAudioFuncProc;
+  RamPreview.EntryExtram^.FuncInit := @FilterExtramFuncInit;
 
-  SetLength(FilterDLLList, 3);
+  SetLength(FilterDLLList, 4);
   FilterDLLList[0] := RamPreview.Entry;
   FilterDLLList[1] := RamPreview.EntryAudio;
-  FilterDLLList[2] := nil;
+  FilterDLLList[2] := RamPreview.EntryExtram;
+  FilterDLLList[3] := nil;
 
-  Storage.GetMaxBufferSize := @StorageGetMaxBufferSize;
   Storage.Get := @StorageGet;
   Storage.Put := @StoragePut;
   Storage.Del := @StorageDel;

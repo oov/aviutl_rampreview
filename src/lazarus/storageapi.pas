@@ -6,13 +6,19 @@ unit StorageAPI;
 interface
 
 type
-  TGetMaxBufferSizeFunc = function(): integer; cdecl;
-  TGetFunc = function(Key: PChar; Dest: Pointer): integer; cdecl;
-  TPutFunc = function(Key: PChar; Src: Pointer; Len: integer): integer; cdecl;
+  TGetFunc = function(Key: PChar): integer; cdecl;
+  TPutFunc = function(Key: PChar; Len: integer): integer; cdecl;
   TDelFunc = procedure(Key: PChar); cdecl;
 
+  TViewHeader = record
+    A, B, C, D: integer;
+  end;
+  PViewHeader = ^TViewHeader;
+
   TStorageAPI = record
-    GetMaxBufferSize: TGetMaxBufferSizeFunc;
+    ViewHeader: PViewHeader;
+    View: Pointer;
+    ViewLen: integer;
     Get: TGetFunc;
     Put: TPutFunc;
     Del: TDelFunc;
