@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -113,6 +114,10 @@ func (ipc *IPC) dispatch(cmd string) error {
 		buf := make([]byte, size)
 		copy(buf, ((*[1 << 49]byte)(unsafe.Pointer(ipc.mappedView)))[:size:size])
 		ipc.storage[key] = buf
+		if rand.Float32() > 0.97 {
+			runtime.GC()
+			debug.FreeOSMemory()
+		}
 		return writeUint32(0x80000000)
 
 	case "DELS":
