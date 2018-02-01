@@ -27,6 +27,7 @@ type
     FMappedFile: THandle;
     FMappedViewHeader: PViewHeader;
     FMappedViewData: Pointer;
+    FMaxWidth, FMaxHeight: integer;
 
     FCapturing: boolean;
     FPlaying: boolean;
@@ -34,7 +35,6 @@ type
     FCurrentFrame: integer;
     FEndFrame: integer;
     FTimer: THandle;
-    FCacheWidth, FCacheHeight: integer;
     FAudioChannels: integer;
     FAudioBuffer: Pointer;
     FCacheSizeUpdatedAt: cardinal;
@@ -469,7 +469,7 @@ end;
 function TRamPreview.InitProc(Filter: PFilter): boolean;
 var
   SI: TSysInfo;
-  W, H, Len: integer;
+  Len: integer;
   P: Pointer;
 begin
   Result := True;
@@ -477,9 +477,9 @@ begin
     if Filter^.ExFunc^.GetSysInfo(nil, @SI) = AVIUTL_FALSE then
       raise Exception.Create('AviUtl のシステム情報取得に失敗しました');
 
-    W := Max(SI.MaxW, 1280);
-    H := Max(SI.MaxH, 720);
-    Len := W * H * SizeOf(TPixelYC);
+    FMaxWidth := Max(SI.MaxW, 1280);
+    FMaxHeight := Max(SI.MaxH, 720);
+    Len := FMaxWidth * FMaxHeight * SizeOf(TPixelYC);
     FMappedFile := CreateFileMappingW(INVALID_HANDLE_VALUE, nil,
       PAGE_READWRITE, 0, DWORD((Len + SizeOf(TViewHeader)) and
       $ffffffff), nil);
@@ -781,8 +781,6 @@ begin
     FAudioChannels * SizeOf(smallint);
   FAudioBuffer := GetMem(Size * 3);
 
-  FCacheWidth := FI.Width;
-  FCacheHeight := FI.Height;
   FStartFrame := StartFrame;
   FEndFrame := EndFrame;
   FCurrentFrame := StartFrame;
@@ -811,15 +809,15 @@ begin
         Put(-FCurrentFrame, W + SizeOf(TViewHeader));
       end;
 
-      if Filter^.ExFunc^.SetYCPFilteringCacheSize(Filter, FCacheWidth,
-        FCacheHeight, 1, 0) = AVIUTL_FALSE then
+      if Filter^.ExFunc^.SetYCPFilteringCacheSize(Filter, FMaxWidth,
+        FMaxHeight, 1, 0) = AVIUTL_FALSE then
         raise Exception.Create('SetYCPFilteringCacheSize に失敗しました');
 
       Src := PByte(Filter^.ExFunc^.GetYCPFilteringCacheEx(Filter,
         Edit, FCurrentFrame, @W, @H));
       if Src <> nil then
       begin
-        SrcW := FCacheWidth * SizeOf(TPixelYC);
+        SrcW := FMaxWidth * SizeOf(TPixelYC);
         DestW := W * SizeOf(TPixelYC);
         Dest := FMappedViewData;
 
