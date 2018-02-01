@@ -17,8 +17,6 @@
   - 描画キャッシュ保存用のプロセス
 - script/Extram.dll
   - Lua スクリプトから呼び出して使うための拡張モジュール
-- example/Extram.aup
-  - Extram.dll を使用したスクリプト制御のサンプルプロジェクト
 
 更新履歴は CHANGELOG などを参照してください。  
 https://github.com/oov/aviutl_rampreview/blob/master/CHANGELOG.md
