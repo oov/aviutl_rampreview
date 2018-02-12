@@ -6,7 +6,7 @@ mkdir bin bin/script
 sed 's/\r$//' README.md | sed 's/$/\r/' > bin/README.txt
 
 # update version string
-VERSION='v0.2beta2'
+VERSION='v0.3beta'
 GITHASH=`git rev-parse --short HEAD`
 cat << EOS | sed 's/\r$//' | sed 's/$/\r/' > 'src/lazarus/ver.pas'
 unit Ver;
@@ -36,10 +36,12 @@ popd
 
 # build lazarus projects
 cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/RamPreview.lpi
+cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/Output.lpi
 cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/Extram.lpi
 
 # install
 # mkdir aviutl/script
 # cp bin/ZRamPreview.auf aviutl/
+# cp bin/ZRamPreview.auo aviutl/
 # cp bin/ZRamPreview.exe aviutl/
 # cp bin/script/Extram.dll aviutl/script/

@@ -9,10 +9,12 @@
 
 - ZRamPreview.auf
   - AviUtl に「拡張編集RAMプレビュー」「拡張編集RAMプレビュー(音声)」プラグインを追加
-  - メニューに「選択範囲からキャッシュを作成／中止（デフォルトショートカットキー `Ctrl+R`）」を追加
+  - メニューに「選択範囲からキャッシュを作成（デフォルトショートカットキー `Ctrl+R`）」を追加
   - メニューに「キャッシュを消去（デフォルトショートカットキー `Ctrl+E`）」を追加
   - メニューに「動作モード切り替え（通常／RAMプレビュー）（デフォルトショートカットキー `Shift+Ctrl+R`）」を追加
   - メニューに「Extram」→「キャッシュの消去」を追加
+- ZRamPreview.auo
+  - ZRamPreview.auf によって内部的に使用される出力プラグイン
 - ZRamPreview.exe
   - 描画キャッシュ保存用のプロセス
 - script/Extram.dll
@@ -53,6 +55,9 @@ AviUtl のメインメニューから「設定」→「拡張編集RAMプレビ�
 基本的に `Ctrl+R` と `Ctrl+E` のショートカットキーを使用すると、設定用ウィンドウを表示しなくても操作できます。  
 また、全てのショートカットキーは AviUtl 側で再割り当て可能です。
 
+消費メモリーが大きすぎる場合は `メモリー節約なし` と書かれているコンボボックスを変更することで、画質を犠牲にメモリーの消費量が抑えられます。  
+ただしこの機能はあくまでメモリーの消費量が抑えられるだけで、レンダリング速度が速くなることはありません。
+
 ## Extram
 
 Extram.dll は Lua スクリプトから `ZRamPreview.exe` にデータを保存するための Lua 用拡張モジュールです。
@@ -71,7 +76,7 @@ https://github.com/oov/aviutl_rampreview/wiki/FAQ
 Windows Subsystem for Linux 上で `./build.bash` を行うと必要なファイルがビルドできます。
 なお、リポジトリは GOPATH 上にある前提でコードが書かれています。
 
-ソースコードのコンパイルには Go 1.10rc1 windows/amd64、Lazarus 1.8.0 for Windows 32bit が必要です。  
+ソースコードのコンパイルには Go 1.10rc2 windows/amd64、Lazarus 1.8.0 for Windows 32bit が必要です。  
 Lazarus は C:\lazarus にインストールされているのを想定しています。
 
 ## Credits

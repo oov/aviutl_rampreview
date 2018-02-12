@@ -19,10 +19,11 @@ type
 
     FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
     FExEdit, FExEditAudio: PFilter;
+    FFilters: array of PFilter;
+    FOrigProcs: array of TProcFunc;
     FWindow, FFont, FPlayModeList, FResolution, FCacheCreateButton,
-    FCacheClearButton, FCacheSizeLabel, FStatusLabel: THandle;
+    FCacheClearButton, FCacheSizeLabel: THandle;
     FFontHeight: integer;
-    FOriginalExEditProc, FOriginalExEditAudioProc: TProcFunc;
 
     FMappedFile: THandle;
     FMappedViewHeader: PViewHeader;
@@ -31,12 +32,6 @@ type
 
     FCapturing: boolean;
     FPlaying: boolean;
-    FStartFrame: integer;
-    FCurrentFrame: integer;
-    FEndFrame: integer;
-    FTimer: THandle;
-    FAudioChannels: integer;
-    FAudioBuffer: Pointer;
     FCacheSizeUpdatedAt: cardinal;
 
     function GetResolution: integer;
@@ -46,6 +41,7 @@ type
     procedure LeaveCS(CommandName: string);
 
     procedure Clear();
+    procedure SetPlaying(AValue: boolean);
     function Stat(): QWord;
     procedure Put(const Key: integer; const Size: integer);
     function Get(const Key: integer): integer;
@@ -56,13 +52,10 @@ type
     function DelS(const Key: string): integer;
 
     procedure CaptureRange(Edit: Pointer; Filter: PFilter);
-    procedure Capturing(Edit: Pointer; Filter: PFilter);
     procedure ClearCache(Edit: Pointer; Filter: PFilter);
-    procedure UpdateCacheSize(Edit: Pointer; Filter: PFilter);
 
     procedure ClearStorageCache(Edit: Pointer; Filter: PFilter);
 
-    procedure UpdateMode();
     function GetPlayModeComboBox: boolean;
     procedure SetPlayModeComboBox(AValue: boolean);
     function GetEntry: PFilterDLL;
@@ -74,19 +67,21 @@ type
       LP: LPARAM; Edit: Pointer; Filter: PFilter): integer;
     function FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
     function FilterAudioProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
-    procedure UpdateStatus(ws: WideString);
+    procedure UpdateCacheSize();
   public
     constructor Create();
     destructor Destroy(); override;
     property Entry: PFilterDLL read GetEntry;
     property EntryAudio: PFilterDLL read GetEntryAudio;
     property EntryExtram: PFilterDLL read GetEntryExtram;
+    property Playing: boolean read FPlaying write SetPlaying;
     property PlayModeComboBox: boolean read GetPlayModeComboBox
       write SetPlayModeComboBox;
     property Resolution: integer read GetResolution;
   end;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
+function GetOutputPluginTable(): POutputPluginTable; stdcall;
 function GetStorageAPI(): PStorageAPI; cdecl;
 
 var
@@ -103,6 +98,8 @@ const
   PluginInfoANSI = PluginNameANSI + ' ' + Version;
   PluginNameAudioANSI = #$8a#$67#$92#$a3#$95#$d2#$8f#$57#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$28#$89#$b9#$90#$ba#$29;
   PluginInfoAudioANSI = PluginNameAudioANSI + ' ' + Version;
+  OutputPluginNameANSI = PluginNameANSI;
+  OutputPluginInfoANSI = PluginNameANSI + ' ' + Version;
   PluginNameExtramANSI = 'Extram';
   PluginInfoExtramANSI = PluginNameExtramANSI + ' ' + Version;
 
@@ -111,17 +108,22 @@ const
 // '拡張編集(音声)'
 
 const
+  OutputFilter = #$8E#$E8#$93#$AE#$82#$C5#$8E#$67#$82#$A4#$82#$B1#$82#$C6#$82#$CD#$82#$C5#$82#$AB#$82#$DC#$82#$B9#$82#$F1#$00#$44#$4F#$20#$4E#$4F#$54#$20#$55#$53#$45#$20#$54#$48#$49#$53#$00#$00;
   BoolConv: array[boolean] of AviUtlBool = (AVIUTL_FALSE, AVIUTL_TRUE);
-  CreateButtonCaption: array[boolean] of PWideChar =
-    ('選択範囲からキャッシュ作成', '中止');
 
 var
   FilterDLLList: array of PFilterDLL;
+  OutputPluginTable: TOutputPluginTable;
   Storage: TStorageAPI;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
 begin
   Result := @FilterDLLList[0];
+end;
+
+function GetOutputPluginTable(): POutputPluginTable; stdcall;
+begin
+  Result := @OutputPluginTable;
 end;
 
 function StorageGet(Key: PChar): integer; cdecl;
@@ -190,6 +192,30 @@ begin
   Result := RamPreview.MainProc(Window, Message, WP, LP, Edit, Filter);
 end;
 
+function OutputFuncOutput(OI: POutputInfo): AviUtlBool; cdecl;
+var
+  I, Sec, SamplePos, NextSamplePos, Read: integer;
+begin
+  if not RamPreview.FCapturing then begin
+    Result := AVIUTL_FALSE;
+    Exit;
+  end;
+  Sec := 0;
+  NextSamplePos := 0;
+  for I := 0 to OI^.N - 1 do begin
+    if OI^.IsAbort() <> AVIUTL_FALSE then break;
+    OI^.RestTimeDisp(I, OI^.N);
+    SamplePos := NextSamplePos;
+    Inc(Sec, OI^.Scale);
+    NextSamplePos := (Sec * OI^.AudioRate) div OI^.Rate;
+    OI^.GetVideoEx(I, FOURCC_YC48);
+    OI^.GetAudio(SamplePos, NextSamplePos - SamplePos, @Read);
+    OI^.UpdatePreview();
+  end;
+  RamPreview.FCapturing := False;
+  Result := AVIUTL_TRUE;
+end;
+
 { TRamPreview }
 
 function TRamPreview.MainProc(Window: HWND; Message: UINT; WP: WPARAM;
@@ -199,8 +225,8 @@ const
   ExEditVersion = ' version 0.92 ';
   ToggleModeCaption = #$93#$ae#$8d#$ec#$83#$82#$81#$5b#$83#$68#$90#$d8#$82#$e8#$91#$d6#$82#$a6#$81#$69#$92#$ca#$8f#$ed#$81#$5e#$52#$41#$4d#$83#$76#$83#$8c#$83#$72#$83#$85#$81#$5b#$81#$6a;
   // 動作モード切り替え（通常／RAMプレビュー）
-  CaptureCaption = #$91#$49#$91#$f0#$94#$cd#$88#$cd#$82#$a9#$82#$e7#$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8d#$ec#$90#$ac#$81#$5E#$92#$86#$8E#$7E;
-  // 選択範囲からキャッシュ作成／中止
+  CaptureCaption = #$91#$49#$91#$f0#$94#$cd#$88#$cd#$82#$a9#$82#$e7#$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8d#$ec#$90#$ac;
+  // 選択範囲からキャッシュ作成
   ClearCacheCaption = #$83#$4c#$83#$83#$83#$62#$83#$56#$83#$85#$8f#$c1#$8b#$8e;
   // キャッシュ消去
 var
@@ -216,17 +242,17 @@ begin
     begin
       if Filter^.ExFunc^.GetSysInfo(Edit, @sinfo) <> AVIUTL_FALSE then
       begin
+        SetLength(FFilters, sinfo.FilterN);
         for Y := 0 to sinfo.FilterN - 1 do
         begin
           fp := Filter^.ExFunc^.GetFilterP(Y);
+          FFilters[Y] := fp;
           if fp = nil then
             continue;
           if fp^.Name = ExEditNameANSI then
             FExEdit := fp
           else if fp^.Name = ExEditAudioNameANSI then
-            FExEditAudio := fp
-          else
-            continue;
+            FExEditAudio := fp;
         end;
       end;
 
@@ -255,14 +281,18 @@ begin
       SetWindowPos(FPlayModeList, 0, 0, 0, 160, Height, SWP_NOMOVE or SWP_NOZORDER);
       Inc(Y, Height + 8);
 
+      Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
+      FCacheCreateButton := CreateWindowW('BUTTON', '選択範囲からキャッシュ作成',
+        WS_CHILD or WS_VISIBLE, 8, Y, 160, Height, Window, 2, Filter^.DLLHInst, nil);
+      SendMessageW(FCacheCreateButton, WM_SETFONT, WPARAM(FFont), 0);
+      Inc(Y, Height);
+
       Height := FFontHeight + GetSystemMetrics(SM_CYFIXEDFRAME) * 2;
       FResolution := CreateWindowW('COMBOBOX', nil, WS_CHILD or
         WS_VISIBLE or CBS_DROPDOWNLIST, 8, Y, 160, Height + 300,
         Window, 1, Filter^.DLLHInst, nil);
       SendMessageW(FResolution, CB_ADDSTRING, 0,
-        {%H-}LPARAM(PWideChar('フルサイズ')));
-      SendMessageW(FResolution, CB_ADDSTRING, 0,
-        {%H-}LPARAM(PWideChar('1/2')));
+        {%H-}LPARAM(PWideChar('メモリー節約なし')));
       SendMessageW(FResolution, CB_ADDSTRING, 0,
         {%H-}LPARAM(PWideChar('1/4')));
       SendMessageW(FResolution, CB_ADDSTRING, 0,
@@ -273,19 +303,6 @@ begin
         {%H-}LPARAM(PWideChar('1/25')));
       SendMessageW(FResolution, WM_SETFONT, WPARAM(FFont), 0);
       SendMessageW(FResolution, CB_SETCURSEL, 0, 0);
-      Inc(Y, Height);
-
-      Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
-      FCacheCreateButton := CreateWindowW('BUTTON', CreateButtonCaption[False],
-        WS_CHILD or WS_VISIBLE, 8, Y, 160, Height, Window, 2, Filter^.DLLHInst, nil);
-      SendMessageW(FCacheCreateButton, WM_SETFONT, WPARAM(FFont), 0);
-      Inc(Y, Height);
-
-      Height := FFontHeight;
-      FStatusLabel := CreateWindowW('STATIC', PWideChar(''),
-        WS_CHILD or WS_VISIBLE or ES_RIGHT, 8, Y, 160, Height,
-        Window, 3, Filter^.DLLHInst, nil);
-      SendMessageW(FStatusLabel, WM_SETFONT, WPARAM(FFont), 0);
       Inc(Y, Height + 8);
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
@@ -321,9 +338,6 @@ begin
           raise Exception.Create(PluginName +
             ' を使うには AviUtl version 1.00 以降が必要です。');
 
-        FOriginalExEditProc := FExEdit^.FuncProc;
-        FOriginalExEditAudioProc := FExEditAudio^.FuncProc;
-
         Filter^.ExFunc^.AddMenuItem(Filter, CaptureCaption, Window,
           100, VK_R, ADD_MENU_ITEM_FLAG_KEY_CTRL);
         Filter^.ExFunc^.AddMenuItem(Filter, ClearCacheCaption, Window,
@@ -343,20 +357,23 @@ begin
             PWideChar('初期化エラー - ' + PluginName), MB_ICONERROR);
         end;
       end;
-      Result := 1;
+      Result := AVIUTL_FALSE;
     end;
     WM_FILTER_FILE_OPEN:
     begin
       ClearCache(Edit, Filter);
+      Result := AVIUTL_TRUE;
     end;
     WM_FILTER_FILE_CLOSE:
     begin
       ClearCache(Edit, Filter);
+      Result := AVIUTL_TRUE;
     end;
     WM_FILTER_EXIT:
     begin
       DeleteObject(FFont);
       FFont := 0;
+      Result := AVIUTL_TRUE;
     end;
     WM_COMMAND:
     begin
@@ -365,11 +382,19 @@ begin
           1:
           begin
             if HIWORD(WP) = LBN_SELCHANGE then
-              FPlaying := PlayModeComboBox;
-            UpdateMode();
+              Playing := PlayModeComboBox;
+            Result := AVIUTL_TRUE;
           end;
-          2: CaptureRange(Edit, Filter);
-          4: ClearCache(Edit, Filter);
+          2: begin
+            SetFocus(FWindow);
+            CaptureRange(Edit, Filter);
+            Result := AVIUTL_TRUE;
+          end;
+          4: begin
+            SetFocus(FWindow);
+            ClearCache(Edit, Filter);
+            Result := AVIUTL_TRUE;
+          end;
         end;
       except
         on E: Exception do
@@ -385,9 +410,10 @@ begin
         case LOWORD(WP) of
           100: CaptureRange(Edit, Filter);
           101: ClearCache(Edit, Filter);
-          102: PlayModeComboBox := not PlayModeComboBox;
+          102: Playing := not Playing;
           103: ClearStorageCache(Edit, Filter);
         end;
+        Result := AVIUTL_TRUE;
       except
         on E: Exception do
           MessageBoxW(FWindow, PWideChar(
@@ -397,27 +423,9 @@ begin
       end;
 
     end;
-    WM_TIMER:
-    begin
-      try
-        case WP of
-          3:
-          begin
-            KillTimer(Filter^.Hwnd, FTimer);
-            Capturing(Edit, Filter);
-          end;
-        end;
-      except
-        on E: Exception do
-          MessageBoxW(FWindow, PWideChar(
-            WideString('処理中にエラーが発生しました。'#13#10#13#10 +
-            WideString(E.Message))),
-            PluginName, MB_ICONERROR);
-      end;
-    end;
     else
     begin
-      Result := 0;
+      Result := AVIUTL_FALSE;
     end;
   end;
 end;
@@ -426,19 +434,112 @@ function TRamPreview.FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
 var
   S: string;
   X, Y, LineSize, Width, Len: integer;
-  DP: PPixelYC;
+  PYC: PPixelYC;
   SrcLine, DestLine: PByte;
 begin
   Result := True;
-  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then
+  if FCapturing then begin
+    FMappedViewHeader^.A := fpip^.X;
+    FMappedViewHeader^.B := fpip^.Y;
+    FMappedViewHeader^.C := fpip^.YCSize;
+    FMappedViewHeader^.D := Resolution;
+    SrcLine := fpip^.YCPEdit;
+    DestLine := FMappedViewData;
+    LineSize := fpip^.LineSize;
+    case FMappedViewHeader^.D of
+      0:
+      begin // Full
+        Width := fpip^.X * fpip^.YCSize;
+        for Y := 0 to fpip^.Y - 1 do
+        begin
+          Move(SrcLine^, DestLine^, Width);
+          Inc(SrcLine, LineSize);
+          Inc(DestLine, Width);
+        end;
+        Put(fpip^.Frame + 1, Width * fpip^.Y + SizeOf(TViewHeader));
+      end;
+      1:
+      begin // 1/4
+        Width := (fpip^.X div 2) * fpip^.YCSize;
+        for Y := 0 to (fpip^.Y div 2) - 1 do
+        begin
+          PYC := PPixelYC(SrcLine);
+          for X := 0 to (fpip^.X div 2) - 1 do
+          begin
+            PPixelYC(DestLine)^ := PYC^;
+            Inc(DestLine, fpip^.YCSize);
+            Inc(PYC, 2);
+          end;
+          Inc(SrcLine, LineSize * 2);
+        end;
+        Put(fpip^.Frame + 1, Width * (fpip^.Y div 2) + SizeOf(TViewHeader));
+      end;
+      2:
+      begin
+        Width := (fpip^.X div 3) * fpip^.YCSize;
+        for Y := 0 to (fpip^.Y div 3) - 1 do
+        begin
+          PYC := PPixelYC(SrcLine);
+          for X := 0 to (fpip^.X div 3) - 1 do
+          begin
+            PPixelYC(DestLine)^ := PYC^;
+            Inc(DestLine, fpip^.YCSize);
+            Inc(PYC, 3);
+          end;
+          Inc(SrcLine, LineSize * 3);
+        end;
+        Put(fpip^.Frame + 1, Width * (fpip^.Y div 3) + SizeOf(TViewHeader));
+      end;
+      3:
+      begin
+        Width := (fpip^.X div 4) * fpip^.YCSize;
+        for Y := 0 to (fpip^.Y div 4) - 1 do
+        begin
+          PYC := PPixelYC(SrcLine);
+          for X := 0 to (fpip^.X div 4) - 1 do
+          begin
+            PPixelYC(DestLine)^ := PYC^;
+            Inc(DestLine, fpip^.YCSize);
+            Inc(PYC, 4);
+          end;
+          Inc(SrcLine, LineSize * 4);
+        end;
+        Put(fpip^.Frame + 1, Width * (fpip^.Y div 4) + SizeOf(TViewHeader));
+      end;
+      4:
+      begin
+        Width := (fpip^.X div 5) * fpip^.YCSize;
+        for Y := 0 to (fpip^.Y div 5) - 1 do
+        begin
+          PYC := PPixelYC(SrcLine);
+          for X := 0 to (fpip^.X div 5) - 1 do
+          begin
+            PPixelYC(DestLine)^ := PYC^;
+            Inc(DestLine, fpip^.YCSize);
+            Inc(PYC, 5);
+          end;
+          Inc(SrcLine, LineSize * 5);
+        end;
+        Put(fpip^.Frame + 1, Width * (fpip^.Y div 5) + SizeOf(TViewHeader));
+      end;
+    end;
+
+    if GetTickCount() > FCacheSizeUpdatedAt + 500 then
+    begin
+      FCacheSizeUpdatedAt := GetTickCount();
+      UpdateCacheSize();
+    end;
+
     Exit;
+  end;
+  if not FPlaying then Exit;
   try
-    Len := Get(fpip^.Frame);
+    Len := Get(fpip^.Frame + 1);
     if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
     begin
       fpip^.X := FMappedViewHeader^.A;
       fpip^.Y := FMappedViewHeader^.B;
-      SrcLine := Self.FMappedViewData;
+      SrcLine := FMappedViewData;
       DestLine := fpip^.YCPEdit;
       LineSize := fpip^.LineSize;
       case FMappedViewHeader^.D of
@@ -453,34 +554,17 @@ begin
           end;
         end;
         1:
-        begin // 1/2
-          Width := (fpip^.X div 2) * fpip^.YCSize;
-          for Y := 0 to fpip^.Y - 1 do
-          begin
-            DP := PPixelYC(DestLine);
-            for X := 0 to (fpip^.X div 2) - 1 do
-            begin
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              Inc(SrcLine, SizeOf(TPixelYC));
-            end;
-            Inc(DestLine, LineSize);
-          end;
-        end;
-        2:
         begin // 1/4
           Width := (fpip^.X div 2) * fpip^.YCSize;
           for Y := 0 to (fpip^.Y div 2) - 1 do
           begin
-            DP := PPixelYC(DestLine);
+            PYC := PPixelYC(DestLine);
             for X := 0 to (fpip^.X div 2) - 1 do
             begin
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
               Inc(SrcLine, SizeOf(TPixelYC));
             end;
             Inc(DestLine, LineSize);
@@ -488,22 +572,49 @@ begin
             Inc(DestLine, LineSize);
           end;
         end;
-        3:
+        2:
         begin // 1/9
           Width := (fpip^.X div 3) * fpip^.YCSize;
           for Y := 0 to (fpip^.Y div 3) - 1 do
           begin
-            DP := PPixelYC(DestLine);
+            PYC := PPixelYC(DestLine);
             for X := 0 to (fpip^.X div 3) - 1 do
             begin
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
               Inc(SrcLine, SizeOf(TPixelYC));
             end;
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+          end;
+        end;
+        3:
+        begin // 1/16
+          Width := (fpip^.X div 4) * fpip^.YCSize;
+          for Y := 0 to (fpip^.Y div 4) - 1 do
+          begin
+            PYC := PPixelYC(DestLine);
+            for X := 0 to (fpip^.X div 4) - 1 do
+            begin
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              Inc(SrcLine, SizeOf(TPixelYC));
+            end;
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
             Inc(DestLine, LineSize);
             Move((DestLine - LineSize)^, DestLine^, LineSize);
             Inc(DestLine, LineSize);
@@ -512,50 +623,23 @@ begin
           end;
         end;
         4:
-        begin // 1/16
-          Width := (fpip^.X div 4) * fpip^.YCSize;
-          for Y := 0 to (fpip^.Y div 4) - 1 do
-          begin
-            DP := PPixelYC(DestLine);
-            for X := 0 to (fpip^.X div 4) - 1 do
-            begin
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              Inc(SrcLine, SizeOf(TPixelYC));
-            end;
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-          end;
-        end;
-        5:
         begin // 1/25
           Width := (fpip^.X div 5) * fpip^.YCSize;
           for Y := 0 to (fpip^.Y div 5) - 1 do
           begin
-            DP := PPixelYC(DestLine);
+            PYC := PPixelYC(DestLine);
             for X := 0 to (fpip^.X div 5) - 1 do
             begin
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
-              DP^ := PPixelYC(SrcLine)^;
-              Inc(DP);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
+              PYC^ := PPixelYC(SrcLine)^;
+              Inc(PYC);
               Inc(SrcLine, SizeOf(TPixelYC));
             end;
             Inc(DestLine, LineSize);
@@ -573,6 +657,7 @@ begin
     end
     else
     begin
+      FillChar(fpip^.YCPEdit^, fpip^.LineSize * fpip^.Y, 0);
       S := Format('Frame %d: no cache', [fpip^.Frame]);
       fp^.ExFunc^.DrawText(fpip^.YCPEdit, 0, 0, PChar(S), 255, 255,
         255, 0, 0, nil, nil);
@@ -591,10 +676,17 @@ var
   Len: integer;
 begin
   Result := True;
-  if FCapturing or (not FPlaying) or (FStartFrame <> FEndFrame) then
+  if FCapturing then begin
+    Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
+    FMappedViewHeader^.A := fpip^.AudioN;
+    FMappedViewHeader^.B := fpip^.AudioCh;
+    Move(fpip^.AudioP^, FMappedViewData^, Len);
+    Put(-fpip^.Frame - 1, Len + SizeOf(TViewHeader));
     Exit;
+  end;
+  if not FPlaying then Exit;
   try
-    Len := Get(-fpip^.Frame);
+    Len := Get(-fpip^.Frame - 1);
     if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
       (FMappedViewHeader^.B = fpip^.AudioCh) then
       Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
@@ -606,11 +698,6 @@ begin
         WideString(E.Message))),
         PluginName, MB_ICONERROR);
   end;
-end;
-
-procedure TRamPreview.UpdateStatus(ws: WideString);
-begin
-  SetWindowTextW(FStatusLabel, PWideChar(ws));
 end;
 
 function TRamPreview.InitProc(Filter: PFilter): boolean;
@@ -720,9 +807,6 @@ end;
 
 destructor TRamPreview.Destroy();
 begin
-  if FAudioBuffer <> nil then
-    FreeMem(FAudioBuffer);
-
   if FReceiver <> nil then
     FReceiver.Terminate;
 
@@ -777,15 +861,33 @@ begin
   FReceiver.Done();
 end;
 
+procedure TRamPreview.SetPlaying(AValue: boolean);
+var
+  I: integer;
+begin
+  if FPlaying = AValue then Exit;
+  FPlaying := AValue;
+  PlayModeComboBox := AValue;
+
+  if not FPlaying then begin
+    for I := Low(FFilters) to High(FFilters) do
+        FFilters[I]^.FuncProc := FOrigProcs[I];
+    Exit;
+  end;
+
+  SetLength(FOrigProcs, Length(FFilters));
+  for I := Low(FFilters) to High(FFilters) do begin
+    FOrigProcs[I] := FFilters[I]^.FuncProc;
+    if (FOrigProcs[I] <> @FilterFuncProc) and (FOrigProcs[I] <> @FilterAudioFuncProc) then
+      FFilters[I]^.FuncProc := @DummyFuncProc;
+  end;
+end;
+
 procedure TRamPreview.SetPlayModeComboBox(AValue: boolean);
 const
   V: array[boolean] of WPARAM = (0, 1);
 begin
   SendMessageW(FPlayModeList, LB_SETCURSEL, V[AValue], 0);
-  if FPlaying = AValue then
-    Exit;
-  FPlaying := AValue;
-  UpdateMode();
 end;
 
 function TRamPreview.Stat(): QWord;
@@ -900,14 +1002,9 @@ end;
 
 procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
-  StartFrame, EndFrame, Size: integer;
+  StartFrame, EndFrame: integer;
   FI: TFileInfo;
 begin
-  if FStartFrame <> FEndFrame then
-  begin
-    FCurrentFrame := FEndFrame;
-    Exit;
-  end;
   FillChar(FI, SizeOf(TFileInfo), 0);
   if Filter^.ExFunc^.GetFileInfo(Edit, @FI) = AVIUTL_FALSE then
     raise Exception.Create(
@@ -917,208 +1014,12 @@ begin
   if Filter^.ExFunc^.GetSelectFrame(Edit, StartFrame, EndFrame) = AVIUTL_FALSE then
     raise Exception.Create('選択範囲を取得できませんでした');
 
-  if FAudioBuffer <> nil then
-  begin
-    FreeMem(FAudioBuffer);
-    FAudioBuffer := nil;
-  end;
-  FAudioChannels := FI.AudioCh;
-  Size := Filter^.ExFunc^.GetAudioFiltered(Edit, StartFrame, nil) *
-    FAudioChannels * SizeOf(smallint);
-  FAudioBuffer := GetMem(Size * 3);
+  Playing := False;
+  FCapturing := True;
+  Filter^.ExFunc^.EditOutput(Edit, 'RAM', EDIT_OUTPUT_FLAG_NO_DIALOG, OutputPluginNameANSI);
+  Playing := True;
 
-  FStartFrame := StartFrame;
-  FEndFrame := EndFrame;
-  FCurrentFrame := StartFrame;
-
-  FTimer := SetTimer(Filter^.Hwnd, 3, 0, nil);
-  SetWindowTextW(FCacheCreateButton, CreateButtonCaption[True]);
-end;
-
-procedure TRamPreview.Capturing(Edit: Pointer; Filter: PFilter);
-var
-  Samples, W, H, X, Y, SrcW, DestW: integer;
-  Src, Dest: PByte;
-  SP: PPixelYC;
-begin
-  try
-    FCapturing := True;
-    UpdateMode();
-    try
-      Samples := Filter^.ExFunc^.GetAudioFiltering(Filter, Edit,
-        FCurrentFrame, FAudioBuffer);
-      if Samples > 0 then
-      begin
-        W := FAudioChannels * Samples * SizeOf(smallint);
-        FMappedViewHeader^.A := Samples;
-        FMappedViewHeader^.B := FAudioChannels;
-        Move(FAudioBuffer^, FMappedViewData^, W);
-        Put(-FCurrentFrame, W + SizeOf(TViewHeader));
-      end;
-
-      if Filter^.ExFunc^.SetYCPFilteringCacheSize(Filter, FMaxWidth,
-        FMaxHeight, 1, 0) = AVIUTL_FALSE then
-        raise Exception.Create('SetYCPFilteringCacheSize に失敗しました');
-
-      Src := PByte(Filter^.ExFunc^.GetYCPFilteringCacheEx(Filter,
-        Edit, FCurrentFrame, @W, @H));
-      if Src <> nil then
-      begin
-        SrcW := FMaxWidth * SizeOf(TPixelYC);
-        Dest := FMappedViewData;
-
-        FMappedViewHeader^.A := W;
-        FMappedViewHeader^.B := H;
-        FMappedViewHeader^.C := SizeOf(TPixelYC);
-
-        case Resolution of
-          0:
-          begin
-            FMappedViewHeader^.D := 0; // 1/1
-            DestW := W * SizeOf(TPixelYC);
-            for Y := 0 to H - 1 do
-            begin
-              Move(Src^, Dest^, DestW);
-              Inc(Src, SrcW);
-              Inc(Dest, DestW);
-            end;
-            Put(FCurrentFrame, DestW * H + SizeOf(TViewHeader));
-          end;
-          1:
-          begin
-            FMappedViewHeader^.D := 1; // 1/2
-            DestW := (W div 2) * SizeOf(TPixelYC);
-            for Y := 0 to H - 1 do
-            begin
-              SP := PPixelYC(Src);
-              for X := 0 to (W div 2) - 1 do
-              begin
-                PPixelYC(Dest)^ := SP^;
-                Inc(Dest, SizeOf(TPixelYC));
-                Inc(SP, 2);
-              end;
-              Inc(Src, SrcW);
-            end;
-            Put(FCurrentFrame, DestW * H + SizeOf(TViewHeader));
-          end;
-          2:
-          begin
-            FMappedViewHeader^.D := 2; // 1/4
-            DestW := (W div 2) * SizeOf(TPixelYC);
-            for Y := 0 to (H div 2) - 1 do
-            begin
-              SP := PPixelYC(Src);
-              for X := 0 to (W div 2) - 1 do
-              begin
-                PPixelYC(Dest)^ := SP^;
-                Inc(Dest, SizeOf(TPixelYC));
-                Inc(SP, 2);
-              end;
-              Inc(Src, SrcW * 2);
-            end;
-            Put(FCurrentFrame, DestW * (H div 2) + SizeOf(TViewHeader));
-          end;
-          3:
-          begin
-            FMappedViewHeader^.D := 3; // 1/9
-            DestW := (W div 3) * SizeOf(TPixelYC);
-            for Y := 0 to (H div 3) - 1 do
-            begin
-              SP := PPixelYC(Src);
-              for X := 0 to (W div 3) - 1 do
-              begin
-                PPixelYC(Dest)^ := SP^;
-                Inc(Dest, SizeOf(TPixelYC));
-                Inc(SP, 3);
-              end;
-              Inc(Src, SrcW * 3);
-            end;
-            Put(FCurrentFrame, DestW * (H div 3) + SizeOf(TViewHeader));
-          end;
-          4:
-          begin
-            FMappedViewHeader^.D := 4; // 1/16
-            DestW := (W div 4) * SizeOf(TPixelYC);
-            for Y := 0 to (H div 4) - 1 do
-            begin
-              SP := PPixelYC(Src);
-              for X := 0 to (W div 4) - 1 do
-              begin
-                PPixelYC(Dest)^ := SP^;
-                Inc(Dest, SizeOf(TPixelYC));
-                Inc(SP, 4);
-              end;
-              Inc(Src, SrcW * 4);
-            end;
-            Put(FCurrentFrame, DestW * (H div 4) + SizeOf(TViewHeader));
-          end;
-          5:
-          begin
-            FMappedViewHeader^.D := 5; // 1/25
-            DestW := (W div 5) * SizeOf(TPixelYC);
-            for Y := 0 to (H div 5) - 1 do
-            begin
-              SP := PPixelYC(Src);
-              for X := 0 to (W div 5) - 1 do
-              begin
-                PPixelYC(Dest)^ := SP^;
-                Inc(Dest, SizeOf(TPixelYC));
-                Inc(SP, 5);
-              end;
-              Inc(Src, SrcW * 5);
-            end;
-            Put(FCurrentFrame, DestW * (H div 5) + SizeOf(TViewHeader));
-          end;
-        end;
-      end;
-    finally
-      FCapturing := False;
-      UpdateMode();
-    end;
-
-    if FCurrentFrame < FEndFrame then
-    begin
-      if GetTickCount() > FCacheSizeUpdatedAt + 500 then
-      begin
-        FCacheSizeUpdatedAt := GetTickCount();
-        UpdateCacheSize(Edit, Filter);
-      end;
-
-      Filter^.ExFunc^.SetFrame(Edit, FCurrentFrame);
-      Inc(FCurrentFrame);
-      UpdateStatus(WideString(Format('%d / %d', [FCurrentFrame -
-        FStartFrame, FEndFrame - FStartFrame])));
-      FTimer := SetTimer(Filter^.Hwnd, 3, 0, nil);
-    end
-    else
-    begin
-      Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
-      SetWindowTextW(FCacheCreateButton, CreateButtonCaption[False]);
-      UpdateCacheSize(Edit, Filter);
-      UpdateStatus('');
-      FStartFrame := 0;
-      FEndFrame := 0;
-      FCurrentFrame := 0;
-      PlayModeComboBox := True;
-      UpdateMode();
-    end;
-  except
-    on E: Exception do
-    begin
-      MessageBoxW(FWindow, PWideChar(
-        WideString('処理中にエラーが発生しました。'#13#10#13#10 +
-        WideString(E.Message))),
-        PluginName, MB_ICONERROR);
-
-      SetWindowTextW(FCacheCreateButton, CreateButtonCaption[False]);
-      UpdateStatus('');
-      Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
-      FStartFrame := 0;
-      FEndFrame := 0;
-      FCurrentFrame := 0;
-      UpdateMode();
-    end;
-  end;
+  Filter^.ExFunc^.SetFrame(Edit, StartFrame);
 end;
 
 procedure TRamPreview.ClearCache(Edit: Pointer; Filter: PFilter);
@@ -1126,17 +1027,18 @@ begin
   if not FRemoteProcess.Running then
     Exit;
   Clear();
-  UpdateCacheSize(Edit, Filter);
-  PlayModeComboBox := False;
+  UpdateCacheSize();
+  Playing := False;
 end;
 
-procedure TRamPreview.UpdateCacheSize(Edit: Pointer; Filter: PFilter);
+procedure TRamPreview.UpdateCacheSize();
 begin
   if FRemoteProcess.Running then
     SetWindowTextW(FCacheSizeLabel,
       PWideChar(WideString(BytesToStr(Stat()))))
   else
     SetWindowTextW(FCacheSizeLabel, '');
+  EnableWindow(FCacheSizeLabel, True);
 end;
 
 procedure TRamPreview.ClearStorageCache(Edit: Pointer; Filter: PFilter);
@@ -1144,21 +1046,7 @@ begin
   if not FRemoteProcess.Running then
     Exit;
   ClearS();
-  UpdateCacheSize(Edit, Filter);
-end;
-
-procedure TRamPreview.UpdateMode();
-begin
-  if FPlaying and (not FCapturing) and (FStartFrame = FEndFrame) then
-  begin
-    FExEdit^.FuncProc := @DummyFuncProc;
-    FExEditAudio^.FuncProc := @DummyFuncProc;
-  end
-  else
-  begin
-    FExEdit^.FuncProc := FOriginalExEditProc;
-    FExEditAudio^.FuncProc := FOriginalExEditAudioProc;
-  end;
+  UpdateCacheSize();
 end;
 
 procedure TRamPreview.PrepareIPC();
@@ -1245,6 +1133,12 @@ initialization
   FilterDLLList[1] := RamPreview.EntryAudio;
   FilterDLLList[2] := RamPreview.EntryExtram;
   FilterDLLList[3] := nil;
+
+  FillChar(OutputPluginTable, SizeOf(TOutputPluginTable), 0);
+  OutputPluginTable.Name := OutputPluginNameANSI;
+  OutputPluginTable.Information := OutputPluginInfoANSI;
+  OutputPluginTable.FileFilter := OutputFilter;
+  OutputPluginTable.FuncOutput := @OutputFuncOutput;
 
   Storage.Get := @StorageGet;
   Storage.Put := @StoragePut;

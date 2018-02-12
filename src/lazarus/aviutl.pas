@@ -70,6 +70,11 @@ const
   ADD_MENU_ITEM_FLAG_KEY_SHIFT = 1;
   ADD_MENU_ITEM_FLAG_KEY_CTRL = 2;
   ADD_MENU_ITEM_FLAG_KEY_ALT = 4;
+  EDIT_OUTPUT_FLAG_NO_DIALOG = 2;
+  EDIT_OUTPUT_FLAG_WAV = 4;
+
+
+  FOURCC_YC48 = $38344359;
 
 type
   AviUtlBool = integer;
@@ -125,6 +130,7 @@ type
   TIniLoadStrFunc = function(fp: PFilter; key: PChar; str: PChar; default: PChar): AviUtlBool; cdecl;
   TAddMenuItemFunc = function(fp: PFilter; Name: PChar; h: THandle;
     id: integer; def_key: integer; flag: integer): integer; cdecl;
+  TEditOutputFunc = function(edit: Pointer; FileName: PChar; Flag: integer; Typ: PChar): AviUtlBool; cdecl;
   TDrawTextFunc = procedure(ycp: Pointer; x: integer; y: integer; text: PChar; r: integer; g: integer; b: integer; tr: integer; font: THandle; w: PInteger; h: PInteger); cdecl;
 
   TExFunc = record
@@ -199,7 +205,7 @@ type
     AddMenuItem: TAddMenuItemFunc;
     EditOpen: Pointer;
     EditClose: Pointer;
-    EditOutput: Pointer;
+    EditOutput: TEditOutputFunc;
     SetConfig: Pointer;
     Reserved: array[0..6] of integer;
   end;
@@ -372,6 +378,51 @@ type
   end;
   PFilterDLL = ^TFilterDLL;
   PPFilterDLL = ^PFilterDLL;
+
+  TGetVideoFunc = function(frame: integer): Pointer; cdecl;
+  TGetAudioFunc = function(start: integer; length: integer; readed: PInteger): Pointer; cdecl;
+  TIsAbortFunc = function(): AviUtlBool; cdecl;
+  TRestTimeDispFunc = function(now: integer; total: integer): AviUtlBool; cdecl;
+  TUpdatePreviewFunc = function(): AviUtlBool; cdecl;
+  TGetVideoExFunc = function(frame: integer; format: DWORD): Pointer; cdecl;
+  TOutputInfo = record
+    Flag: integer;
+    W, H: integer;
+    Rate, Scale: integer;
+    N: integer;
+    Size: integer;
+    AudioRate: integer;
+    AudioChannel: integer;
+    AudioN: integer;
+    AudioSize: integer;
+    SaveFile: PChar;
+    GetVideo: TGetVideoFunc;
+    GetAudio: TGetAudioFunc;
+    IsAbort: TIsAbortFunc;
+    RestTimeDisp: TRestTimeDispFunc;
+    GetFlag: Pointer;
+    UpdatePreview: TUpdatePreviewFunc;
+    GetVideoEx: TGetVideoExFunc;
+  end;
+  POutputInfo = ^TOutputInfo;
+
+  TOutputInitFunc = function(): AviUtlBool; cdecl;
+  TOutputExitFunc = function(): AviUtlBool; cdecl;
+  TOutputFunc = function(OI: POutputInfo): AviUtlBool; cdecl;
+  TOutputPluginTable = record
+    Flag: integer;
+    Name: PChar;
+    FileFilter: PChar;
+    Information: PChar;
+    FuncInit: TOutputInitFunc;
+    FuncExit: TOutputExitFunc;
+    FuncOutput: TOutputFunc;
+    FuncConfig: Pointer;
+    FuncConfigSet: Pointer;
+    FuncConfigGet: Pointer;
+    Reserved: array[0..15] of integer;
+  end;
+  POutputPluginTable = ^TOutputPluginTable;
 
 implementation
 

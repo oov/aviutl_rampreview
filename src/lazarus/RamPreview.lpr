@@ -10,6 +10,7 @@ uses
 
 exports
   GetFilterTableList,
+  GetOutputPluginTable,
   GetStorageAPI;
 
 initialization
