@@ -19,8 +19,8 @@ type
 
     FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
     FExEdit, FExEditAudio: PFilter;
-    FWindow, FFont, FPlayModeList, FCacheCreateButton, FCacheClearButton,
-    FCacheSizeLabel, FStatusLabel: THandle;
+    FWindow, FFont, FPlayModeList, FResolution, FCacheCreateButton,
+    FCacheClearButton, FCacheSizeLabel, FStatusLabel: THandle;
     FFontHeight: integer;
     FOriginalExEditProc, FOriginalExEditAudioProc: TProcFunc;
 
@@ -39,6 +39,7 @@ type
     FAudioBuffer: Pointer;
     FCacheSizeUpdatedAt: cardinal;
 
+    function GetResolution: integer;
     procedure PrepareIPC();
     procedure OnRequest(Sender: TObject; const Command: UTF8String);
     procedure EnterCS(CommandName: string);
@@ -82,6 +83,7 @@ type
     property EntryExtram: PFilterDLL read GetEntryExtram;
     property PlayModeComboBox: boolean read GetPlayModeComboBox
       write SetPlayModeComboBox;
+    property Resolution: integer read GetResolution;
   end;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
@@ -252,6 +254,26 @@ begin
       SetWindowPos(FPlayModeList, 0, 0, 0, 160, Height, SWP_NOMOVE or SWP_NOZORDER);
       Inc(Y, Height + 8);
 
+      Height := FFontHeight + GetSystemMetrics(SM_CYFIXEDFRAME) * 2;
+      FResolution := CreateWindowW('COMBOBOX', nil, WS_CHILD or
+        WS_VISIBLE or CBS_DROPDOWNLIST, 8, Y, 160, Height + 300,
+        Window, 1, Filter^.DLLHInst, nil);
+      SendMessageW(FResolution, CB_ADDSTRING, 0,
+        {%H-}LPARAM(PWideChar('フルサイズ')));
+      SendMessageW(FResolution, CB_ADDSTRING, 0,
+        {%H-}LPARAM(PWideChar('1/2')));
+      SendMessageW(FResolution, CB_ADDSTRING, 0,
+        {%H-}LPARAM(PWideChar('1/4')));
+      SendMessageW(FResolution, CB_ADDSTRING, 0,
+        {%H-}LPARAM(PWideChar('1/9')));
+      SendMessageW(FResolution, CB_ADDSTRING, 0,
+        {%H-}LPARAM(PWideChar('1/16')));
+      SendMessageW(FResolution, CB_ADDSTRING, 0,
+        {%H-}LPARAM(PWideChar('1/25')));
+      SendMessageW(FResolution, WM_SETFONT, WPARAM(FFont), 0);
+      SendMessageW(FResolution, CB_SETCURSEL, 0, 0);
+      Inc(Y, Height);
+
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
       FCacheCreateButton := CreateWindowW('BUTTON', CreateButtonCaption[False],
         WS_CHILD or WS_VISIBLE, 8, Y, 160, Height, Window, 2, Filter^.DLLHInst, nil);
@@ -401,7 +423,8 @@ end;
 function TRamPreview.FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
 var
   S: string;
-  Y, LineSize, Width, Len: integer;
+  X, Y, LineSize, Width, Len: integer;
+  DP: PPixelYC;
   SrcLine, DestLine: PByte;
 begin
   Result := True;
@@ -413,15 +436,137 @@ begin
     begin
       fpip^.X := FMappedViewHeader^.A;
       fpip^.Y := FMappedViewHeader^.B;
-      Width := fpip^.X * fpip^.YCSize;
       SrcLine := Self.FMappedViewData;
       DestLine := fpip^.YCPEdit;
       LineSize := fpip^.LineSize;
-      for Y := 0 to fpip^.Y - 1 do
-      begin
-        Move(SrcLine^, DestLine^, Width);
-        Inc(SrcLine, Width);
-        Inc(DestLine, LineSize);
+      case FMappedViewHeader^.D of
+        0:
+        begin // Full
+          Width := fpip^.X * fpip^.YCSize;
+          for Y := 0 to fpip^.Y - 1 do
+          begin
+            Move(SrcLine^, DestLine^, Width);
+            Inc(DestLine, LineSize);
+            Inc(SrcLine, Width);
+          end;
+        end;
+        1:
+        begin // 1/2
+          Width := (fpip^.X div 2) * fpip^.YCSize;
+          for Y := 0 to fpip^.Y - 1 do
+          begin
+            DP := PPixelYC(DestLine);
+            for X := 0 to (fpip^.X div 2) - 1 do
+            begin
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              Inc(SrcLine, SizeOf(TPixelYC));
+            end;
+            Inc(DestLine, LineSize);
+          end;
+        end;
+        2:
+        begin // 1/4
+          Width := (fpip^.X div 2) * fpip^.YCSize;
+          for Y := 0 to (fpip^.Y div 2) - 1 do
+          begin
+            DP := PPixelYC(DestLine);
+            for X := 0 to (fpip^.X div 2) - 1 do
+            begin
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              Inc(SrcLine, SizeOf(TPixelYC));
+            end;
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+          end;
+        end;
+        3:
+        begin // 1/9
+          Width := (fpip^.X div 3) * fpip^.YCSize;
+          for Y := 0 to (fpip^.Y div 3) - 1 do
+          begin
+            DP := PPixelYC(DestLine);
+            for X := 0 to (fpip^.X div 3) - 1 do
+            begin
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              Inc(SrcLine, SizeOf(TPixelYC));
+            end;
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+          end;
+        end;
+        4:
+        begin // 1/16
+          Width := (fpip^.X div 4) * fpip^.YCSize;
+          for Y := 0 to (fpip^.Y div 4) - 1 do
+          begin
+            DP := PPixelYC(DestLine);
+            for X := 0 to (fpip^.X div 4) - 1 do
+            begin
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              Inc(SrcLine, SizeOf(TPixelYC));
+            end;
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+          end;
+        end;
+        5:
+        begin // 1/25
+          Width := (fpip^.X div 5) * fpip^.YCSize;
+          for Y := 0 to (fpip^.Y div 5) - 1 do
+          begin
+            DP := PPixelYC(DestLine);
+            for X := 0 to (fpip^.X div 5) - 1 do
+            begin
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              DP^ := PPixelYC(SrcLine)^;
+              Inc(DP);
+              Inc(SrcLine, SizeOf(TPixelYC));
+            end;
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+            Move((DestLine - LineSize)^, DestLine^, LineSize);
+            Inc(DestLine, LineSize);
+          end;
+        end;
       end;
     end
     else
@@ -791,8 +936,9 @@ end;
 
 procedure TRamPreview.Capturing(Edit: Pointer; Filter: PFilter);
 var
-  Samples, W, H, Y, SrcW, DestW: integer;
+  Samples, W, H, X, Y, SrcW, DestW: integer;
   Src, Dest: PByte;
+  SP: PPixelYC;
 begin
   try
     FCapturing := True;
@@ -818,19 +964,111 @@ begin
       if Src <> nil then
       begin
         SrcW := FMaxWidth * SizeOf(TPixelYC);
-        DestW := W * SizeOf(TPixelYC);
         Dest := FMappedViewData;
 
         FMappedViewHeader^.A := W;
         FMappedViewHeader^.B := H;
         FMappedViewHeader^.C := SizeOf(TPixelYC);
-        for Y := 0 to H - 1 do
-        begin
-          Move(Src^, Dest^, DestW);
-          Inc(Src, SrcW);
-          Inc(Dest, DestW);
+
+        case Resolution of
+          0:
+          begin
+            FMappedViewHeader^.D := 0; // 1/1
+            DestW := W * SizeOf(TPixelYC);
+            for Y := 0 to H - 1 do
+            begin
+              Move(Src^, Dest^, DestW);
+              Inc(Src, SrcW);
+              Inc(Dest, DestW);
+            end;
+            Put(FCurrentFrame, DestW * H + SizeOf(TViewHeader));
+          end;
+          1:
+          begin
+            FMappedViewHeader^.D := 1; // 1/2
+            DestW := (W div 2) * SizeOf(TPixelYC);
+            for Y := 0 to H - 1 do
+            begin
+              SP := PPixelYC(Src);
+              for X := 0 to (W div 2) - 1 do
+              begin
+                PPixelYC(Dest)^ := SP^;
+                Inc(Dest, SizeOf(TPixelYC));
+                Inc(SP, 2);
+              end;
+              Inc(Src, SrcW);
+            end;
+            Put(FCurrentFrame, DestW * H + SizeOf(TViewHeader));
+          end;
+          2:
+          begin
+            FMappedViewHeader^.D := 2; // 1/4
+            DestW := (W div 2) * SizeOf(TPixelYC);
+            for Y := 0 to (H div 2) - 1 do
+            begin
+              SP := PPixelYC(Src);
+              for X := 0 to (W div 2) - 1 do
+              begin
+                PPixelYC(Dest)^ := SP^;
+                Inc(Dest, SizeOf(TPixelYC));
+                Inc(SP, 2);
+              end;
+              Inc(Src, SrcW * 2);
+            end;
+            Put(FCurrentFrame, DestW * (H div 2) + SizeOf(TViewHeader));
+          end;
+          3:
+          begin
+            FMappedViewHeader^.D := 3; // 1/9
+            DestW := (W div 3) * SizeOf(TPixelYC);
+            for Y := 0 to (H div 3) - 1 do
+            begin
+              SP := PPixelYC(Src);
+              for X := 0 to (W div 3) - 1 do
+              begin
+                PPixelYC(Dest)^ := SP^;
+                Inc(Dest, SizeOf(TPixelYC));
+                Inc(SP, 3);
+              end;
+              Inc(Src, SrcW * 3);
+            end;
+            Put(FCurrentFrame, DestW * (H div 3) + SizeOf(TViewHeader));
+          end;
+          4:
+          begin
+            FMappedViewHeader^.D := 4; // 1/16
+            DestW := (W div 4) * SizeOf(TPixelYC);
+            for Y := 0 to (H div 4) - 1 do
+            begin
+              SP := PPixelYC(Src);
+              for X := 0 to (W div 4) - 1 do
+              begin
+                PPixelYC(Dest)^ := SP^;
+                Inc(Dest, SizeOf(TPixelYC));
+                Inc(SP, 4);
+              end;
+              Inc(Src, SrcW * 4);
+            end;
+            Put(FCurrentFrame, DestW * (H div 4) + SizeOf(TViewHeader));
+          end;
+          5:
+          begin
+            FMappedViewHeader^.D := 5; // 1/25
+            DestW := (W div 5) * SizeOf(TPixelYC);
+            for Y := 0 to (H div 5) - 1 do
+            begin
+              SP := PPixelYC(Src);
+              for X := 0 to (W div 5) - 1 do
+              begin
+                PPixelYC(Dest)^ := SP^;
+                Inc(Dest, SizeOf(TPixelYC));
+                Inc(SP, 5);
+              end;
+              Inc(Src, SrcW * 5);
+            end;
+            Put(FCurrentFrame, DestW * (H div 5) + SizeOf(TViewHeader));
+          end;
         end;
-        Put(FCurrentFrame, DestW * H + SizeOf(TViewHeader));
       end;
     finally
       FCapturing := False;
@@ -970,6 +1208,11 @@ begin
   end;
   FReceiver.WaitResult();
   FReceiver.Done();
+end;
+
+function TRamPreview.GetResolution: integer;
+begin
+  Result := SendMessageW(FResolution, CB_GETCURSEL, 0, 0);
 end;
 
 function TRamPreview.GetEntryExtram: PFilterDLL;
