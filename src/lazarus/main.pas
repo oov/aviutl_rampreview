@@ -131,7 +131,8 @@ end;
 
 function StoragePut(Key: PChar; Len: integer): integer; cdecl;
 begin
-  if Len > Storage.ViewLen then begin
+  if Len > Storage.ViewLen then
+  begin
     Result := 0;
     Exit;
   end;
@@ -308,7 +309,8 @@ begin
       try
         GetNativeSystemInfo(@si);
         if si.wProcessorArchitecture <> PROCESSOR_ARCHITECTURE_AMD64 then
-          raise Exception.Create(PluginName+' をを使うには 64bit 版の Windows が必要です。');
+          raise Exception.Create(PluginName +
+            ' をを使うには 64bit 版の Windows が必要です。');
         if (not Assigned(FExEdit)) or (not Assigned(FExEditAudio)) then
           raise Exception.Create(
             '拡張編集プラグインが見つかりません。');
@@ -626,8 +628,7 @@ begin
     FMaxHeight := Max(SI.MaxH, 720);
     Len := FMaxWidth * FMaxHeight * SizeOf(TPixelYC);
     FMappedFile := CreateFileMappingW(INVALID_HANDLE_VALUE, nil,
-      PAGE_READWRITE, 0, DWORD((Len + SizeOf(TViewHeader)) and
-      $ffffffff), nil);
+      PAGE_READWRITE, 0, DWORD((Len + SizeOf(TViewHeader)) and $ffffffff), nil);
     if FMappedFile = 0 then
       raise Exception.Create('CreateFileMapping に失敗しました');
 
