@@ -103,6 +103,8 @@ type
   TProjectSaveFunc = function(fp: PFilter; edit: Pointer; Data: Pointer;
     var size: integer): AviUtlBool; cdecl;
 
+  TIsEditingFunc = function(edit: Pointer): AviUtlBool; cdecl;
+  TIsSavingFunc = function(edit: Pointer): AviUtlBool; cdecl;
   TGetFrameFunc = function(edit: Pointer): integer; cdecl;
   TGetFrameNFunc = function(edit: Pointer): integer; cdecl;
   TSetFrame = function(edit: Pointer; n: integer): integer; cdecl;
@@ -130,8 +132,8 @@ type
     GetYCP: Pointer;
     GetPixelP: Pointer;
     GetAudio: Pointer;
-    IsEditing: Pointer;
-    IsSaving: Pointer;
+    IsEditing: TIsEditingFunc;
+    IsSaving: TIsSavingFunc;
     GetFrame: TGetFrameFunc;
     GetFrameN: TGetFrameNFunc;
     GetFrameSize: Pointer;
