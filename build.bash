@@ -1,6 +1,6 @@
 #!/bin/bash
 
-mkdir bin bin/script
+mkdir -p bin/script
 
 # copy readme
 sed 's/\r$//' README.md | sed 's/$/\r/' > bin/ZRamPreview.txt
@@ -30,9 +30,9 @@ const version = "$VERSION ( $GITHASH )"
 EOS
 
 # build ZRamPreview.exe
-pushd src/go
+pushd src/go > /dev/null
 go.exe build -x -ldflags="-s" -o ../../bin/ZRamPreview.exe
-popd
+popd > /dev/null
 
 # build lazarus projects
 cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/RamPreview.lpi
@@ -40,7 +40,7 @@ cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/Output.lpi
 cmd.exe /c C:/lazarus/lazbuild.exe --build-all src/lazarus/Extram.lpi
 
 # install
-# mkdir aviutl/script
+# mkdir -p aviutl/script
 # cp bin/ZRamPreview.auf aviutl/
 # cp bin/ZRamPreview.auo aviutl/
 # cp bin/ZRamPreview.exe aviutl/
