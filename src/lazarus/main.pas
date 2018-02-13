@@ -238,9 +238,7 @@ begin
       begin
         SetLength(FFilters, sinfo.FilterN);
         for Y := 0 to sinfo.FilterN - 1 do
-        begin
           FFilters[Y] := Filter^.ExFunc^.GetFilterP(Y);
-        end;
       end;
 
       NCM.cbSize := SizeOf(NCM);
