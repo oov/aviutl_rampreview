@@ -89,7 +89,7 @@ var
 implementation
 
 uses
-  Hook, Util, Ver;
+  Hook, YV12, Util, Ver;
 
 const
   PluginName = '拡張編集RAMプレビュー';
@@ -445,22 +445,8 @@ begin
         end;
         Put(fpip^.Frame + 1, Width * fpip^.Y + SizeOf(TViewHeader));
       end;
-      1:
-      begin // 1/4
-        Width := (fpip^.X div 2) * fpip^.YCSize;
-        for Y := 0 to (fpip^.Y div 2) - 1 do
-        begin
-          PYC := PPixelYC(SrcLine);
-          for X := 0 to (fpip^.X div 2) - 1 do
-          begin
-            PPixelYC(DestLine)^ := PYC^;
-            Inc(DestLine, fpip^.YCSize);
-            Inc(PYC, 2);
-          end;
-          Inc(SrcLine, LineSize * 2);
-        end;
-        Put(fpip^.Frame + 1, Width * (fpip^.Y div 2) + SizeOf(TViewHeader));
-      end;
+      // 1/4
+      1: Put(fpip^.Frame + 1, EncodeYC48ToYV12(fpip, FMappedViewData) + SizeOf(TViewHeader));
       2:
       begin
         Width := (fpip^.X div 3) * fpip^.YCSize;
@@ -540,25 +526,8 @@ begin
             Inc(SrcLine, Width);
           end;
         end;
-        1:
-        begin // 1/4
-          Width := (fpip^.X div 2) * fpip^.YCSize;
-          for Y := 0 to (fpip^.Y div 2) - 1 do
-          begin
-            PYC := PPixelYC(DestLine);
-            for X := 0 to (fpip^.X div 2) - 1 do
-            begin
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              Inc(SrcLine, SizeOf(TPixelYC));
-            end;
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-          end;
-        end;
+        // 1/4
+        1: DecodeYV12ToYC48(fpip, FMappedViewData);
         2:
         begin // 1/9
           Width := (fpip^.X div 3) * fpip^.YCSize;
