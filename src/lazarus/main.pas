@@ -861,7 +861,7 @@ begin
 
   if not FPlaying then begin
     for I := Low(FFilters) to High(FFilters) do
-        FFilters[I]^.FuncProc := FOrigProcs[I];
+      FFilters[I]^.FuncProc := FOrigProcs[I];
     Exit;
   end;
 
