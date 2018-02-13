@@ -18,7 +18,7 @@ type
     FCS: TRTLCriticalSection;
 
     FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
-    FExEdit, FExEditAudio: PFilter;
+    FExEdit: PFilter;
     FFilters: array of PFilter;
     FOrigProcs: array of TProcFunc;
     FWindow, FFont, FPlayModeList, FResolution, FCacheCreateButton,
@@ -103,8 +103,6 @@ const
   PluginInfoExtramANSI = PluginNameExtramANSI + ' ' + Version;
 
   ExEditNameANSI = #$8a#$67#$92#$a3#$95#$d2#$8f#$57; // '拡張編集'
-  ExEditAudioNameANSI = #$8a#$67#$92#$a3#$95#$d2#$8f#$57#$28#$89#$b9#$90#$ba#$29;
-// '拡張編集(音声)'
 
 const
   OutputFilter = #$8E#$E8#$93#$AE#$82#$C5#$8E#$67#$82#$A4#$82#$B1#$82#$C6#$82#$CD#$82#$C5#$82#$AB#$82#$DC#$82#$B9#$82#$F1#$00#$44#$4F#$20#$4E#$4F#$54#$20#$55#$53#$45#$20#$54#$48#$49#$53#$00#$00;
@@ -246,12 +244,8 @@ begin
         begin
           fp := Filter^.ExFunc^.GetFilterP(Y);
           FFilters[Y] := fp;
-          if fp = nil then
-            continue;
           if fp^.Name = ExEditNameANSI then
-            FExEdit := fp
-          else if fp^.Name = ExEditAudioNameANSI then
-            FExEditAudio := fp;
+            FExEdit := fp;
         end;
       end;
 
@@ -327,7 +321,7 @@ begin
         if si.wProcessorArchitecture <> PROCESSOR_ARCHITECTURE_AMD64 then
           raise Exception.Create(PluginName +
             ' をを使うには 64bit 版の Windows が必要です。');
-        if (not Assigned(FExEdit)) or (not Assigned(FExEditAudio)) then
+        if not Assigned(FExEdit) then
           raise Exception.Create(
             '拡張編集プラグインが見つかりません。');
         if StrPos(FExEdit^.Information, ExEditVersion) = nil then
