@@ -1007,6 +1007,7 @@ begin
   Playing := False;
   FCapturing := True;
   Filter^.ExFunc^.EditOutput(Edit, 'RAM', EDIT_OUTPUT_FLAG_NO_DIALOG, OutputPluginNameANSI);
+  FCapturing := False;
   Playing := True;
 
   UpdateCacheSize();
