@@ -1,9 +1,9 @@
 # 拡張編集RAMプレビュー
 
-拡張編集RAMプレビュー は AviUtl の拡張編集プラグインでの描画結果をキャッシュし、キャッシュからの再生を行えるようにするための AviUtl プラグインです。
+拡張編集RAMプレビュー は AviUtl での描画結果をキャッシュし、キャッシュからの再生を行えるようにするための AviUtl プラグインです。
 
 動作には 64bit Windows が、快適な動作には十分な CPU 速度と大量のメモリが必要です。  
-動作確認は AviUtl version 1.00 / 拡張編集 version 0.92 のみで行っています。
+動作確認は AviUtl version 1.00 のみで行っています。
 
 このツールキットは以下のコンポーネントで構成されています。
 
@@ -18,7 +18,7 @@
 - ZRamPreview.exe
   - 描画キャッシュ保存用のプロセス
 - script/Extram.dll
-  - Lua スクリプトから呼び出して使うための拡張モジュール
+  - 拡張編集の Lua スクリプトから呼び出して使うための拡張モジュール
 
 更新履歴は CHANGELOG などを参照してください。  
 https://github.com/oov/aviutl_rampreview/blob/master/CHANGELOG.md
@@ -32,7 +32,7 @@ https://github.com/oov/aviutl_rampreview/blob/master/CHANGELOG.md
 
 ## インストール／アンインストール
 
-README.txt 以外を exedit.auf がある場所と同じ場所にコピーすればインストール完了です。
+全てを exedit.auf などのプラグインがある場所と同じ場所にコピーすればインストール完了です。
 
 アンインストールも同じファイルを削除すれば完了です。
 
@@ -60,7 +60,7 @@ AviUtl のメインメニューから「設定」→「拡張編集RAMプレビ�
 
 ## Extram
 
-Extram.dll は Lua スクリプトから `ZRamPreview.exe` にデータを保存するための Lua 用拡張モジュールです。
+Extram.dll は拡張編集の Lua スクリプトから `ZRamPreview.exe` にデータを保存するための Lua 用拡張モジュールです。
 以下のページに詳しい解説を記載しています。
 
 https://github.com/oov/aviutl_rampreview/wiki/Extram
