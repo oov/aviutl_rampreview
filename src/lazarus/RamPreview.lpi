@@ -37,7 +37,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="6">
+    <Units Count="7">
       <Unit0>
         <Filename Value="RamPreview.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -67,6 +67,11 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="StorageAPI"/>
       </Unit5>
+      <Unit6>
+        <Filename Value="hook.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Hook"/>
+      </Unit6>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

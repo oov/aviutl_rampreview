@@ -89,7 +89,7 @@ var
 implementation
 
 uses
-  Util, Ver;
+  Hook, Util, Ver;
 
 const
   PluginName = '拡張編集RAMプレビュー';
@@ -1006,7 +1006,9 @@ begin
 
   Playing := False;
   FCapturing := True;
-  Filter^.ExFunc^.EditOutput(Edit, 'RAM', EDIT_OUTPUT_FLAG_NO_DIALOG, OutputPluginNameANSI);
+  SwitchHook(True);
+  Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
+  SwitchHook(False);
   FCapturing := False;
   Playing := True;
 
@@ -1136,7 +1138,10 @@ initialization
   Storage.Put := @StoragePut;
   Storage.Del := @StorageDel;
 
+  InitHook();
+
 finalization
   RamPreview.Free();
+  FreeHook();
 
 end.
