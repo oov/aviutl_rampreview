@@ -18,7 +18,7 @@ type
     FCS: TRTLCriticalSection;
 
     FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
-    FExEdit: PFilter;
+    FMainWindow: THandle;
     FFilters: array of PFilter;
     FOrigProcs: array of TProcFunc;
     FWindow, FFont, FPlayModeList, FResolution, FCacheCreateButton,
@@ -101,8 +101,6 @@ const
   OutputPluginInfoANSI = PluginNameANSI + ' ' + Version;
   PluginNameExtramANSI = 'Extram';
   PluginInfoExtramANSI = PluginNameExtramANSI + ' ' + Version;
-
-  ExEditNameANSI = #$8a#$67#$92#$a3#$95#$d2#$8f#$57; // '拡張編集'
 
 const
   OutputFilter = #$8E#$E8#$93#$AE#$82#$C5#$8E#$67#$82#$A4#$82#$B1#$82#$C6#$82#$CD#$82#$C5#$82#$AB#$82#$DC#$82#$B9#$82#$F1#$00#$44#$4F#$20#$4E#$4F#$54#$20#$55#$53#$45#$20#$54#$48#$49#$53#$00#$00;
@@ -231,7 +229,6 @@ var
   NCM: TNonClientMetrics;
   DC: THandle;
   sinfo: TSysInfo;
-  fp: PFilter;
   si: SYSTEM_INFO;
 begin
   case Message of
@@ -242,10 +239,7 @@ begin
         SetLength(FFilters, sinfo.FilterN);
         for Y := 0 to sinfo.FilterN - 1 do
         begin
-          fp := Filter^.ExFunc^.GetFilterP(Y);
-          FFilters[Y] := fp;
-          if fp^.Name = ExEditNameANSI then
-            FExEdit := fp;
+          FFilters[Y] := Filter^.ExFunc^.GetFilterP(Y);
         end;
       end;
 
@@ -283,7 +277,7 @@ begin
       Height := FFontHeight + GetSystemMetrics(SM_CYFIXEDFRAME) * 2;
       FResolution := CreateWindowW('COMBOBOX', nil, WS_CHILD or
         WS_VISIBLE or CBS_DROPDOWNLIST, 8, Y, 160, Height + 300,
-        Window, 1, Filter^.DLLHInst, nil);
+        Window, 3, Filter^.DLLHInst, nil);
       SendMessageW(FResolution, CB_ADDSTRING, 0,
         {%H-}LPARAM(PWideChar('メモリー節約なし')));
       SendMessageW(FResolution, CB_ADDSTRING, 0,
@@ -321,12 +315,6 @@ begin
         if si.wProcessorArchitecture <> PROCESSOR_ARCHITECTURE_AMD64 then
           raise Exception.Create(PluginName +
             ' をを使うには 64bit 版の Windows が必要です。');
-        if not Assigned(FExEdit) then
-          raise Exception.Create(
-            '拡張編集プラグインが見つかりません。');
-        if StrPos(FExEdit^.Information, ExEditVersion) = nil then
-          raise Exception.Create(PluginName + ' を使うには拡張編集' +
-            ExEditVersion + 'が必要です。');
         if sinfo.Build < 10000 then
           raise Exception.Create(PluginName +
             ' を使うには AviUtl version 1.00 以降が必要です。');
@@ -343,7 +331,7 @@ begin
           SetWindowTextW(Window,
             PWideChar(WideString(PluginName +
             ' - 初期化に失敗したため使用できません')));
-          MessageBoxW(FExEdit^.Hwnd,
+          MessageBoxW(FMainWindow,
             PWideChar(PluginName +
             ' の初期化中にエラーが発生しました。'#13#10#13#10 +
             WideString(E.Message)),
@@ -374,17 +362,25 @@ begin
         case LOWORD(WP) of
           1:
           begin
-            if HIWORD(WP) = LBN_SELCHANGE then
+            if HIWORD(WP) = LBN_SELCHANGE then begin
+              SetFocus(FMainWindow);
               Playing := PlayModeComboBox;
+            end;
             Result := AVIUTL_TRUE;
           end;
           2: begin
-            SetFocus(FWindow);
+            SetFocus(FMainWindow);
             CaptureRange(Edit, Filter);
             Result := AVIUTL_TRUE;
           end;
+          3:
+          begin
+            if HIWORD(WP) = LBN_SELCHANGE then
+              SetFocus(FMainWindow);
+            Result := AVIUTL_FALSE;
+          end;
           4: begin
-            SetFocus(FWindow);
+            SetFocus(FMainWindow);
             ClearCache(Edit, Filter);
             Result := AVIUTL_TRUE;
           end;
@@ -794,6 +790,8 @@ begin
     FILTER_FLAG_DISP_FILTER or FILTER_FLAG_NO_CONFIG or FILTER_FLAG_RADIO_BUTTON;
   FEntryExtram.Name := PluginNameExtramANSI;
   FEntryExtram.Information := PluginInfoExtramANSI;
+
+  FMainWindow := FindAviUtlWindow();
 end;
 
 destructor TRamPreview.Destroy();
