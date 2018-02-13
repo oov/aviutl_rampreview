@@ -1016,6 +1016,7 @@ begin
   Filter^.ExFunc^.EditOutput(Edit, 'RAM', EDIT_OUTPUT_FLAG_NO_DIALOG, OutputPluginNameANSI);
   Playing := True;
 
+  UpdateCacheSize();
   Filter^.ExFunc^.SetFrame(Edit, StartFrame);
 end;
 
