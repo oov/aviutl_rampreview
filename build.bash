@@ -3,7 +3,7 @@
 mkdir bin bin/script
 
 # copy readme
-sed 's/\r$//' README.md | sed 's/$/\r/' > bin/README.txt
+sed 's/\r$//' README.md | sed 's/$/\r/' > bin/ZRamPreview.txt
 
 # update version string
 VERSION='v0.3beta'
