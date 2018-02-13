@@ -679,7 +679,10 @@ begin
     if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
       (FMappedViewHeader^.B = fpip^.AudioCh) then
       Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
-        fpip^.AudioN * SizeOf(smallint));
+        fpip^.AudioN * SizeOf(smallint))
+    else
+      FillChar(fpip^.AudioP^, fpip^.AudioCh *
+        fpip^.AudioN * SizeOf(smallint), 0);
   except
     on E: Exception do
       MessageBoxW(FWindow, PWideChar(
