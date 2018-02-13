@@ -28,7 +28,6 @@ type
     FMappedFile: THandle;
     FMappedViewHeader: PViewHeader;
     FMappedViewData: Pointer;
-    FMaxWidth, FMaxHeight: integer;
 
     FCapturing: boolean;
     FPlaying: boolean;
@@ -711,9 +710,7 @@ begin
     if Filter^.ExFunc^.GetSysInfo(nil, @SI) = AVIUTL_FALSE then
       raise Exception.Create('AviUtl のシステム情報取得に失敗しました');
 
-    FMaxWidth := Max(SI.MaxW, 1280);
-    FMaxHeight := Max(SI.MaxH, 720);
-    Len := FMaxWidth * FMaxHeight * SizeOf(TPixelYC);
+    Len := Max(SI.MaxW, 1280) * Max(SI.MaxH, 720) * SizeOf(TPixelYC);
     FMappedFile := CreateFileMappingW(INVALID_HANDLE_VALUE, nil,
       PAGE_READWRITE, 0, DWORD((Len + SizeOf(TViewHeader)) and $ffffffff), nil);
     if FMappedFile = 0 then
