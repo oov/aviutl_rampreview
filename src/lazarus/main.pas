@@ -868,7 +868,7 @@ begin
   SetLength(FOrigProcs, Length(FFilters));
   for I := Low(FFilters) to High(FFilters) do begin
     FOrigProcs[I] := FFilters[I]^.FuncProc;
-    if (FOrigProcs[I] <> @FilterFuncProc) and (FOrigProcs[I] <> @FilterAudioFuncProc) then
+    if (FOrigProcs[I] <> nil) and (FOrigProcs[I] <> @FilterFuncProc) and (FOrigProcs[I] <> @FilterAudioFuncProc) then
       FFilters[I]^.FuncProc := @DummyFuncProc;
   end;
 end;
