@@ -5,41 +5,154 @@ unit YV12;
 
 interface
 
-uses
-  AviUtl;
-
-function EncodeYC48ToYV12(fpip: PFilterProcInfo; Dest: Pointer): integer;
-procedure DecodeYV12ToYC48(fpip: PFilterProcInfo; Src: Pointer);
+procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
+procedure DownScaleYC48(Dest: Pointer; Src: Pointer; var W, H: integer; SLine: integer; const Factor: integer);
+procedure UpScaleYC48(Dest: Pointer; Src: Pointer; const OrigW, OrigH: integer;
+  const DLine: integer; const Factor: integer);
+function EncodeYC48ToYV12(const Dest: Pointer; const Src: Pointer;
+  const W: integer; const H: integer; const SLine: integer): integer;
+procedure DecodeYV12ToYC48(const Dest: Pointer; const Src: Pointer;
+  const W, H: integer; const DLine: integer);
 
 implementation
 
-// Referene: https://makiuchi-d.github.io/mksoft/doc/aviutlyc.html
+uses
+  AviUtl;
 
-function EncodeYC48ToYV12(fpip: PFilterProcInfo; Dest: Pointer): integer;
+procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
+begin
+  W := (W + Factor - 1) div Factor;
+  H := (H + Factor - 1) div Factor;
+end;
+
+procedure DownScaleYC48(Dest: Pointer; Src: Pointer; var W: integer;
+  var H: integer; SLine: integer; const Factor: integer);
 var
-  SLine, DLine, X, Y: integer;
+  X, Y: integer;
+  S: PPixelYC;
+  D: PPixelYC absolute Dest;
+begin
+  W := (W + Factor - 1) div Factor;
+  H := (H + Factor - 1) div Factor;
+  SLine := SLine * Factor;
+  D := Dest;
+  for Y := 0 to H - 1 do
+  begin
+    S := PPixelYC(Src);
+    for X := 0 to W - 1 do
+    begin
+      D^ := S^;
+      Inc(D);
+      Inc(S, Factor);
+    end;
+    Inc(Src, SLine);
+  end;
+end;
+
+procedure UpScaleYC48(Dest: Pointer; Src: Pointer; const OrigW, OrigH: integer;
+  const DLine: integer; const Factor: integer);
+var
+  SW, SH, FW, FH, X, Y, I, OrigLine: integer;
+  Pix: TPixelYC;
+  S: PPixelYC absolute Src;
+  D: PPixelYC;
+begin
+  FW := OrigW div Factor;
+  FH := OrigH div Factor;
+  SW := (OrigW + Factor - 1) div Factor;
+  SH := (OrigH + Factor - 1) div Factor;
+  OrigLine := OrigW * SizeOf(TPixelYC);
+  for Y := 0 to FH - 1 do
+  begin
+    D := PPixelYC(Dest);
+    for X := 0 to FW - 1 do
+    begin
+      Pix := S^;
+      for I := 0 to Factor - 1 do
+      begin
+        D^ := Pix;
+        Inc(D);
+      end;
+      Inc(S);
+    end;
+    if SW <> FW then
+    begin
+      Pix := S^;
+      for X := FW * Factor to OrigW - 1 do
+      begin
+        D^ := Pix;
+        Inc(D);
+      end;
+      Inc(S);
+    end;
+    for I := 1 to Factor - 1 do
+    begin
+      Move(Dest^, (Dest + DLine * I)^, OrigLine);
+    end;
+    Inc(Dest, DLine * Factor);
+  end;
+  if SH <> FH then
+  begin
+    D := PPixelYC(Dest);
+    for X := 0 to FW - 1 do
+    begin
+      Pix := S^;
+      for I := 0 to Factor - 1 do
+      begin
+        D^ := Pix;
+        Inc(D);
+      end;
+      Inc(S);
+    end;
+    if SW <> FW then
+    begin
+      Pix := S^;
+      for X := FW * Factor to OrigW - 1 do
+      begin
+        D^ := Pix;
+        Inc(D);
+      end;
+      Inc(S);
+    end;
+    for Y := FH * Factor to OrigH - 1 do
+    begin
+      Move(Dest^, (Dest + DLine)^, OrigLine);
+      Inc(Dest, DLine);
+    end;
+  end;
+end;
+
+// Reference: https://makiuchi-d.github.io/mksoft/doc/aviutlyc.html
+
+function EncodeYC48ToYV12(const Dest: Pointer; const Src: Pointer;
+  const W: integer; const H: integer; const SLine: integer): integer;
+var
+  DLine, X, Y, YWB, YHB, UVW, UVH: integer;
   S1, S2: PPixelYC;
   S, DY1, DY2, DU, DV: PByte;
 begin
-  SLine := fpip^.LineSize;
-  S := fpip^.YCPEdit;
-  DLine := fpip^.X;
+  YWB := W div 2;
+  YHB := H div 2;
+  UVW := (W + 2 - 1) div 2;
+  UVH := (H + 2 - 1) div 2;
+  S := Src;
+  DLine := W;
   DY1 := Dest;
   DY2 := DY1 + DLine;
-  DU := DY1 + DLine * fpip^.Y;
-  DV := DU + (DLine div 2) * (fpip^.Y div 2);
-  for Y := 0 to (fpip^.Y div 2) - 1 do
+  DU := DY1 + W * H;
+  DV := DU + UVW * UVH;
+  for Y := 0 to YHB - 1 do
   begin
     S1 := PPixelYC(S);
     S2 := PPixelYC(S + SLine);
-    for X := 0 to (fpip^.X div 2) - 1 do
+    for X := 0 to YWB - 1 do
     begin
-      DU^ := (((S1^.Cb + 2048)*7 + 66)>>7) + 16;
-      DV^ := (((S1^.Cr + 2048)*7 + 66)>>7) + 16;
-      (DY1+0)^ := (((S1+0)^.Y*219 + 383)>>12) + 16;
-      (DY1+1)^ := (((S1+1)^.Y*219 + 383)>>12) + 16;
-      (DY2+0)^ := (((S2+0)^.Y*219 + 383)>>12) + 16;
-      (DY2+1)^ := (((S2+1)^.Y*219 + 383)>>12) + 16;
+      DU^ := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
+      DV^ := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
+      (DY1 + 0)^ := (((S1 + 0)^.Y * 219 + 383) shr 12) + 16;
+      (DY1 + 1)^ := (((S1 + 1)^.Y * 219 + 383) shr 12) + 16;
+      (DY2 + 0)^ := (((S2 + 0)^.Y * 219 + 383) shr 12) + 16;
+      (DY2 + 1)^ := (((S2 + 1)^.Y * 219 + 383) shr 12) + 16;
       Inc(DY1, 2);
       Inc(DY2, 2);
       Inc(S1, 2);
@@ -47,48 +160,100 @@ begin
       Inc(DU);
       Inc(DV);
     end;
+    if YWB <> UVW then
+    begin
+      DU^ := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
+      DV^ := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
+      //for X := YWB * 2 to W - 1 do
+      //begin
+      DY1^ := ((S1^.Y * 219 + 383) shr 12) + 16;
+      DY2^ := ((S2^.Y * 219 + 383) shr 12) + 16;
+      Inc(DY1);
+      Inc(DY2);
+      Inc(S1);
+      Inc(S2);
+      //end;
+      Inc(DU);
+      Inc(DV);
+    end;
     Inc(S, SLine * 2);
     Inc(DY1, DLine);
     Inc(DY2, DLine);
   end;
-  Result := DLine * fpip^.Y + (DLine div 2) * (fpip^.Y div 2) * 2;
+  if YHB <> UVH then
+  begin
+    S1 := PPixelYC(S);
+    //for Y := YHB * 2 to H - 1 do
+    //begin
+    for X := 0 to YWB - 1 do
+    begin
+      DU^ := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
+      DV^ := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
+      (DY1 + 0)^ := (((S1 + 0)^.Y * 219 + 383) shr 12) + 16;
+      (DY1 + 1)^ := (((S1 + 1)^.Y * 219 + 383) shr 12) + 16;
+      Inc(DY1, 2);
+      Inc(S1, 2);
+      Inc(DU);
+      Inc(DV);
+    end;
+    if YWB <> UVW then
+    begin
+      DU^ := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
+      DV^ := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
+      //for X := YWB * 2 to W - 1 do
+      //begin
+      DY1^ := ((S1^.Y * 219 + 383) shr 12) + 16;
+      Inc(DY1);
+      Inc(S1);
+      //end;
+      Inc(DU);
+      Inc(DV);
+    end;
+    //Inc(S, SLine);
+    //end;
+  end;
+  Result := W * H + UVW * UVH * 2;
 end;
 
-procedure DecodeYV12ToYC48(fpip: PFilterProcInfo; Src: Pointer);
+procedure DecodeYV12ToYC48(const Dest: Pointer; const Src: Pointer;
+  const W, H: integer; const DLine: integer);
 var
-  SLine, DLine, X, Y, Cb, Cr: integer;
+  SLine, X, Y, Cb, Cr, YWB, YHB, UVW, UVH: integer;
   D1, D2: PPixelYC;
   D, SY1, SY2, SU, SV: PByte;
 begin
-  DLine := fpip^.LineSize;
-  D := fpip^.YCPEdit;
-  SLine := fpip^.X;
+  YWB := W div 2;
+  YHB := H div 2;
+  UVW := (W + 2 - 1) div 2;
+  UVH := (H + 2 - 1) div 2;
+
+  D := Dest;
+  SLine := W;
   SY1 := Src;
   SY2 := SY1 + SLine;
-  SU := SY1 + SLine * fpip^.Y;
-  SV := SU + (SLine div 2) * (fpip^.Y div 2);
-  for Y := 0 to (fpip^.Y div 2) - 1 do
+  SU := SY1 + W * H;
+  SV := SU + UVW * UVH;
+  for Y := 0 to YHB - 1 do
   begin
     D1 := PPixelYC(D);
     D2 := PPixelYC(D + DLine);
-    for X := 0 to (fpip^.X div 2) - 1 do
+    for X := 0 to YWB - 1 do
     begin
       // TODO: interpolate Cb/Cr
-      Cb := (((SU+0)^ - 128)*4681 + 164) >> 8;
-      Cr := (((SV+0)^ - 128)*4681 + 164) >> 8;
-      (D1+0)^.Y := (((SY1+0)^ * 1197)>>6) - 299;
-      (D1+0)^.Cb := Cb;
-      (D1+0)^.Cr := Cr;
-      (D1+1)^.Y := (((SY1+1)^ * 1197)>>6) - 299;
-      (D1+1)^.Cb := Cb;
-      (D1+1)^.Cr := Cr;
-      (D2+0)^.Y := (((SY2+0)^ * 1197)>>6) - 299;
-      (D2+0)^.Cb := Cb;
-      (D2+0)^.Cr := Cr;
-      (D2+1)^.Y := (((SY2+1)^ * 1197)>>6) - 299;
-      (D2+1)^.Cb := Cb;
-      (D2+1)^.Cr := Cr;
-
+      Cb := ((SU^ - 128) * 4681 + 164) shr 8;
+      Cr := ((SV^ - 128) * 4681 + 164) shr 8;
+      (D1 + 0)^.Y := (((SY1 + 0)^ * 1197) shr 6) - 299;
+      (D1 + 0)^.Cb := Cb;
+      (D1 + 0)^.Cr := Cr;
+      (D1 + 1)^.Y := (((SY1 + 1)^ * 1197) shr 6) - 299;
+      (D1 + 1)^.Cb := Cb;
+      (D1 + 1)^.Cr := Cr;
+      (D2 + 0)^.Y := (((SY2 + 0)^ * 1197) shr 6) - 299;
+      (D2 + 0)^.Cb := Cb;
+      (D2 + 0)^.Cr := Cr;
+      (D2 + 1)^.Y := (((SY2 + 1)^ * 1197) shr 6) - 299;
+      (D2 + 1)^.Cb := Cb;
+      (D2 + 1)^.Cr := Cr;
       Inc(SY1, 2);
       Inc(SY2, 2);
       Inc(D1, 2);
@@ -96,11 +261,69 @@ begin
       Inc(SU);
       Inc(SV);
     end;
+    if YWB <> UVW then
+    begin
+      Cb := ((SU^ - 128) * 4681 + 164) shr 8;
+      Cr := ((SV^ - 128) * 4681 + 164) shr 8;
+      //for X := YWB * 2 to W - 1 do
+      //begin
+      D1^.Y := ((SY1^ * 1197) shr 6) - 299;
+      D1^.Cb := Cb;
+      D1^.Cr := Cr;
+      D2^.Y := ((SY2^ * 1197) shr 6) - 299;
+      D2^.Cb := Cb;
+      D2^.Cr := Cr;
+      Inc(SY1);
+      Inc(SY2);
+      Inc(D1);
+      Inc(D2);
+      //end;
+      Inc(SU);
+      Inc(SV);
+    end;
     Inc(D, DLine * 2);
     Inc(SY1, SLine);
     Inc(SY2, SLine);
   end;
+  if YHB <> UVH then
+  begin
+    D1 := PPixelYC(D);
+    //for Y := YHB * 2 to H - 1 do
+    //begin
+    for X := 0 to YWB - 1 do
+    begin
+      // TODO: interpolate Cb/Cr
+      Cb := ((SU^ - 128) * 4681 + 164) shr 8;
+      Cr := ((SV^ - 128) * 4681 + 164) shr 8;
+      (D1 + 0)^.Y := (((SY1 + 0)^ * 1197) shr 6) - 299;
+      (D1 + 0)^.Cb := Cb;
+      (D1 + 0)^.Cr := Cr;
+      (D1 + 1)^.Y := (((SY1 + 1)^ * 1197) shr 6) - 299;
+      (D1 + 1)^.Cb := Cb;
+      (D1 + 1)^.Cr := Cr;
+      Inc(SY1, 2);
+      Inc(D1, 2);
+      Inc(SU);
+      Inc(SV);
+    end;
+    if YWB <> UVW then
+    begin
+      Cb := ((SU^ - 128) * 4681 + 164) shr 8;
+      Cr := ((SV^ - 128) * 4681 + 164) shr 8;
+      //for X := YWB * 2 to W - 1 do
+      //begin
+      D1^.Y := ((SY1^ * 1197) shr 6) - 299;
+      D1^.Cb := Cb;
+      D1^.Cr := Cr;
+      Inc(SY1);
+      Inc(D1);
+      //end;
+      Inc(SU);
+      Inc(SV);
+    end;
+    //Inc(D, DLine);
+    //end;
+  end;
 end;
 
 end.
-

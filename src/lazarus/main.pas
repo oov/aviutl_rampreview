@@ -277,17 +277,15 @@ begin
         WS_VISIBLE or CBS_DROPDOWNLIST, 8, Y, 160, Height + 300,
         Window, 3, Filter^.DLLHInst, nil);
       SendMessageW(FResolution, CB_ADDSTRING, 0,
-        {%H-}LPARAM(PWideChar('メモリー節約なし')));
+        {%H-}LPARAM(PWideChar('無圧縮')));
       SendMessageW(FResolution, CB_ADDSTRING, 0,
-        {%H-}LPARAM(PWideChar('1/4')));
+        {%H-}LPARAM(PWideChar('通常品質'))); // 1/4
       SendMessageW(FResolution, CB_ADDSTRING, 0,
-        {%H-}LPARAM(PWideChar('1/9')));
+        {%H-}LPARAM(PWideChar('解像度1/2'))); // 1/16
       SendMessageW(FResolution, CB_ADDSTRING, 0,
-        {%H-}LPARAM(PWideChar('1/16')));
-      SendMessageW(FResolution, CB_ADDSTRING, 0,
-        {%H-}LPARAM(PWideChar('1/25')));
+        {%H-}LPARAM(PWideChar('解像度1/4'))); // 1/64
       SendMessageW(FResolution, WM_SETFONT, WPARAM(FFont), 0);
-      SendMessageW(FResolution, CB_SETCURSEL, 0, 0);
+      SendMessageW(FResolution, CB_SETCURSEL, 1, 0);
       Inc(Y, Height + 8);
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
@@ -418,11 +416,12 @@ begin
 end;
 
 function TRamPreview.FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
+const
+  ScaleMap: array[0..3] of integer = (1, 1, 2, 4);
 var
   S: string;
-  X, Y, LineSize, Width, Len: integer;
-  PYC: PPixelYC;
-  SrcLine, DestLine: PByte;
+  X, Y, Line, Len: integer;
+  Src, Dest: Pointer;
 begin
   Result := True;
   if FCapturing then begin
@@ -430,70 +429,30 @@ begin
     FMappedViewHeader^.B := fpip^.Y;
     FMappedViewHeader^.C := fpip^.YCSize;
     FMappedViewHeader^.D := Resolution;
-    SrcLine := fpip^.YCPEdit;
-    DestLine := FMappedViewData;
-    LineSize := fpip^.LineSize;
     case FMappedViewHeader^.D of
       0:
       begin // Full
-        Width := fpip^.X * fpip^.YCSize;
+        Src := fpip^.YCPEdit;
+        Dest := FMappedViewData;
+        Line := fpip^.LineSize;
+        X := fpip^.X * fpip^.YCSize;
         for Y := 0 to fpip^.Y - 1 do
         begin
-          Move(SrcLine^, DestLine^, Width);
-          Inc(SrcLine, LineSize);
-          Inc(DestLine, Width);
+          Move(Src^, Dest^, X);
+          Inc(Src, Line);
+          Inc(Dest, X);
         end;
-        Put(fpip^.Frame + 1, Width * fpip^.Y + SizeOf(TViewHeader));
+        Put(fpip^.Frame + 1, X * fpip^.Y + SizeOf(TViewHeader));
       end;
-      // 1/4
-      1: Put(fpip^.Frame + 1, EncodeYC48ToYV12(fpip, FMappedViewData) + SizeOf(TViewHeader));
-      2:
-      begin
-        Width := (fpip^.X div 3) * fpip^.YCSize;
-        for Y := 0 to (fpip^.Y div 3) - 1 do
-        begin
-          PYC := PPixelYC(SrcLine);
-          for X := 0 to (fpip^.X div 3) - 1 do
-          begin
-            PPixelYC(DestLine)^ := PYC^;
-            Inc(DestLine, fpip^.YCSize);
-            Inc(PYC, 3);
-          end;
-          Inc(SrcLine, LineSize * 3);
-        end;
-        Put(fpip^.Frame + 1, Width * (fpip^.Y div 3) + SizeOf(TViewHeader));
+      1: begin // 1/4
+        Put(fpip^.Frame + 1, EncodeYC48ToYV12(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
       end;
-      3:
-      begin
-        Width := (fpip^.X div 4) * fpip^.YCSize;
-        for Y := 0 to (fpip^.Y div 4) - 1 do
-        begin
-          PYC := PPixelYC(SrcLine);
-          for X := 0 to (fpip^.X div 4) - 1 do
-          begin
-            PPixelYC(DestLine)^ := PYC^;
-            Inc(DestLine, fpip^.YCSize);
-            Inc(PYC, 4);
-          end;
-          Inc(SrcLine, LineSize * 4);
-        end;
-        Put(fpip^.Frame + 1, Width * (fpip^.Y div 4) + SizeOf(TViewHeader));
-      end;
-      4:
-      begin
-        Width := (fpip^.X div 5) * fpip^.YCSize;
-        for Y := 0 to (fpip^.Y div 5) - 1 do
-        begin
-          PYC := PPixelYC(SrcLine);
-          for X := 0 to (fpip^.X div 5) - 1 do
-          begin
-            PPixelYC(DestLine)^ := PYC^;
-            Inc(DestLine, fpip^.YCSize);
-            Inc(PYC, 5);
-          end;
-          Inc(SrcLine, LineSize * 5);
-        end;
-        Put(fpip^.Frame + 1, Width * (fpip^.Y div 5) + SizeOf(TViewHeader));
+      2, 3:
+      begin // 1/16, 1/64
+        X := fpip^.X;
+        Y := fpip^.Y;
+        DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
+        Put(fpip^.Frame + 1, EncodeYC48ToYV12(FMappedViewData, fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
       end;
     end;
 
@@ -512,102 +471,30 @@ begin
     begin
       fpip^.X := FMappedViewHeader^.A;
       fpip^.Y := FMappedViewHeader^.B;
-      SrcLine := FMappedViewData;
-      DestLine := fpip^.YCPEdit;
-      LineSize := fpip^.LineSize;
       case FMappedViewHeader^.D of
         0:
         begin // Full
-          Width := fpip^.X * fpip^.YCSize;
+          Src := FMappedViewData;
+          Dest := fpip^.YCPEdit;
+          Line := fpip^.LineSize;
+          X := fpip^.X * fpip^.YCSize;
           for Y := 0 to fpip^.Y - 1 do
           begin
-            Move(SrcLine^, DestLine^, Width);
-            Inc(DestLine, LineSize);
-            Inc(SrcLine, Width);
+            Move(Src^, Dest^, X);
+            Inc(Dest, Line);
+            Inc(Src, X);
           end;
         end;
-        // 1/4
-        1: DecodeYV12ToYC48(fpip, FMappedViewData);
-        2:
-        begin // 1/9
-          Width := (fpip^.X div 3) * fpip^.YCSize;
-          for Y := 0 to (fpip^.Y div 3) - 1 do
-          begin
-            PYC := PPixelYC(DestLine);
-            for X := 0 to (fpip^.X div 3) - 1 do
-            begin
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              Inc(SrcLine, SizeOf(TPixelYC));
-            end;
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-          end;
+        1: begin // 1/4
+          DecodeYV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A, FMappedViewHeader^.B, fpip^.LineSize);
         end;
-        3:
-        begin // 1/16
-          Width := (fpip^.X div 4) * fpip^.YCSize;
-          for Y := 0 to (fpip^.Y div 4) - 1 do
-          begin
-            PYC := PPixelYC(DestLine);
-            for X := 0 to (fpip^.X div 4) - 1 do
-            begin
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              Inc(SrcLine, SizeOf(TPixelYC));
-            end;
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-          end;
-        end;
-        4:
-        begin // 1/25
-          Width := (fpip^.X div 5) * fpip^.YCSize;
-          for Y := 0 to (fpip^.Y div 5) - 1 do
-          begin
-            PYC := PPixelYC(DestLine);
-            for X := 0 to (fpip^.X div 5) - 1 do
-            begin
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              PYC^ := PPixelYC(SrcLine)^;
-              Inc(PYC);
-              Inc(SrcLine, SizeOf(TPixelYC));
-            end;
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-            Move((DestLine - LineSize)^, DestLine^, LineSize);
-            Inc(DestLine, LineSize);
-          end;
+        2, 3:
+        begin // 1/16, 1/64
+          X := FMappedViewHeader^.A;
+          Y := FMappedViewHeader^.B;
+          CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.D]);
+          DecodeYV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
+          UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A, FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
         end;
       end;
     end
