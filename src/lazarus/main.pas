@@ -952,6 +952,7 @@ end;
 procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
   FI: TFileInfo;
+  Success: AviUtlBool;
 begin
   FillChar(FI, SizeOf(TFileInfo), 0);
   if Filter^.ExFunc^.GetFileInfo(Edit, @FI) = AVIUTL_FALSE then
@@ -965,13 +966,16 @@ begin
   Playing := False;
   FCapturing := True;
   DisableGetSaveFileName(True);
-  Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
+  Success := Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
   DisableGetSaveFileName(False);
   FCapturing := False;
-  Playing := True;
 
   UpdateStatusLabel();
-  Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
+  if Success <> AVIUTL_FALSE then
+  begin
+    Playing := True;
+    Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
+  end;
 end;
 
 procedure TRamPreview.ClearCache(Edit: Pointer; Filter: PFilter);
