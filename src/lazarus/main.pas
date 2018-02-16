@@ -43,6 +43,7 @@ type
 
     procedure Clear();
     procedure SetPlaying(AValue: boolean);
+    procedure SetResolution(AValue: integer);
     function Stat(): QWord;
     procedure Put(const Key: integer; const Size: integer);
     function Get(const Key: integer): integer;
@@ -68,6 +69,10 @@ type
       LP: LPARAM; Edit: Pointer; Filter: PFilter): integer;
     function FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
     function FilterAudioProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
+    function ProjectLoadProc(Filter: PFilter; Edit: Pointer; Data: Pointer;
+      Size: integer): boolean;
+    function ProjectSaveProc(Filter: PFilter; Edit: Pointer; Data: Pointer;
+      var Size: integer): boolean;
     procedure UpdateStatusLabel();
   public
     constructor Create();
@@ -78,7 +83,7 @@ type
     property Playing: boolean read FPlaying write SetPlaying;
     property PlayModeComboBox: boolean read GetPlayModeComboBox
       write SetPlayModeComboBox;
-    property Resolution: integer read GetResolution;
+    property Resolution: integer read GetResolution write SetResolution;
   end;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
@@ -152,6 +157,18 @@ end;
 function FilterFuncInit(fp: PFilter): AviUtlBool; cdecl;
 begin
   Result := BoolConv[RamPreview.InitProc(fp)];
+end;
+
+function FilterFuncProjectLoad(Filter: PFilter; Edit: Pointer;
+  Data: Pointer; Size: integer): AviUtlBool; cdecl;
+begin
+  Result := BoolConv[RamPreview.ProjectLoadProc(Filter, Edit, Data, Size)];
+end;
+
+function FilterFuncProjectSave(Filter: PFilter; Edit: Pointer;
+  Data: Pointer; var Size: integer): AviUtlBool; cdecl;
+begin
+  Result := BoolConv[RamPreview.ProjectSaveProc(Filter, Edit, Data, Size)];
 end;
 
 function FilterExtramFuncInit(fp: PFilter): AviUtlBool; cdecl;
@@ -573,6 +590,56 @@ begin
   end;
 end;
 
+function TRamPreview.ProjectLoadProc(Filter: PFilter; Edit: Pointer;
+  Data: Pointer; Size: integer): boolean;
+var
+  SL: TStringList;
+  MS: TMemoryStream;
+  I: integer;
+begin
+  SL := TStringList.Create();
+  try
+    MS := TMemoryStream.Create();
+    try
+      MS.Write(Data^, Size);
+      MS.Position := 0;
+      SL.LoadFromStream(MS);
+    finally
+      MS.Free();
+    end;
+    I := SL.IndexOfName('resolution');
+    if I <> -1 then
+      Resolution := StrToIntDef(SL.ValueFromIndex[I], 0);
+    Result := True;
+  finally
+    SL.Free();
+  end;
+end;
+
+function TRamPreview.ProjectSaveProc(Filter: PFilter; Edit: Pointer;
+  Data: Pointer; var Size: integer): boolean;
+var
+  SL: TStringList;
+  MS: TMemoryStream;
+begin
+  MS := TMemoryStream.Create();
+  try
+    SL := TStringList.Create();
+    try
+      SL.Add('resolution=' + IntToStr(Resolution));
+      SL.SaveToStream(MS);
+    finally
+      SL.Free();
+    end;
+    Size := MS.Size;
+    if Assigned(Data) then
+      Move(MS.Memory^, Data^, MS.Size);
+    Result := True;
+  finally
+    MS.Free();
+  end;
+end;
+
 function TRamPreview.InitProc(Filter: PFilter): boolean;
 var
   SI: TSysInfo;
@@ -758,6 +825,11 @@ begin
       (FOrigProcs[I] <> @FilterAudioFuncProc) then
       FFilters[I]^.FuncProc := @DummyFuncProc;
   end;
+end;
+
+procedure TRamPreview.SetResolution(AValue: integer);
+begin
+  SendMessageW(FResolution, CB_SETCURSEL, AValue, 0);
 end;
 
 procedure TRamPreview.SetPlayModeComboBox(AValue: boolean);
@@ -1012,6 +1084,8 @@ initialization
   RamPreview.Entry^.FuncExit := @FilterFuncExit;
   RamPreview.Entry^.FuncWndProc := @FilterFuncWndProc;
   RamPreview.Entry^.FuncProc := @FilterFuncProc;
+  RamPreview.Entry^.FuncProjectLoad := @FilterFuncProjectLoad;
+  RamPreview.Entry^.FuncProjectSave := @FilterFuncProjectSave;
   RamPreview.EntryAudio^.FuncProc := @FilterAudioFuncProc;
   RamPreview.EntryExtram^.FuncInit := @FilterExtramFuncInit;
 
