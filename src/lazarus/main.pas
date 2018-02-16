@@ -549,7 +549,8 @@ begin
     on E: Exception do
     begin
       OutputDebugStringW(PWideChar(WideString('[' + PluginName +
-        '] ビデオ処理中にエラーが発生しました。'#13#10#13#10 + E.Message)));
+        '] ビデオ処理中にエラーが発生しました。'#13#10#13#10 +
+        E.Message)));
       Result := False;
     end;
   end;
