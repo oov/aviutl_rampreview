@@ -26,7 +26,7 @@ begin
   H := (H + Factor - 1) div Factor;
 end;
 
-procedure DownScaleYC48(Dest, Src: Pointer; var W: integer; var H: integer;
+procedure DownScaleYC48(Dest, Src: Pointer; var W, H: integer;
   SLine: integer; const Factor: integer);
 var
   X, Y: integer;
