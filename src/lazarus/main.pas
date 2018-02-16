@@ -194,17 +194,20 @@ var
   I, Sec, SamplePos, NextSamplePos, Read: integer;
   aborted: AviUtlBool;
 begin
-  if not RamPreview.FCapturing then begin
+  if not RamPreview.FCapturing then
+  begin
     Result := AVIUTL_FALSE;
     Exit;
   end;
   Sec := 0;
   NextSamplePos := 0;
-  for I := 0 to OI^.N - 1 do begin
+  for I := 0 to OI^.N - 1 do
+  begin
     DisableMessageBox(True);
     aborted := OI^.IsAbort();
     DisableMessageBox(False);
-    if aborted <> AVIUTL_FALSE then break;
+    if aborted <> AVIUTL_FALSE then
+      break;
     OI^.RestTimeDisp(I, OI^.N);
     SamplePos := NextSamplePos;
     Inc(Sec, OI^.Scale);
@@ -273,8 +276,9 @@ begin
       Inc(Y, Height + 8);
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
-      FCacheCreateButton := CreateWindowW('BUTTON', '選択範囲からキャッシュ作成',
-        WS_CHILD or WS_VISIBLE, 8, Y, 160, Height, Window, 2, Filter^.DLLHInst, nil);
+      FCacheCreateButton := CreateWindowW('BUTTON',
+        '選択範囲からキャッシュ作成', WS_CHILD or
+        WS_VISIBLE, 8, Y, 160, Height, Window, 2, Filter^.DLLHInst, nil);
       SendMessageW(FCacheCreateButton, WM_SETFONT, WPARAM(FFont), 0);
       Inc(Y, Height);
 
@@ -364,13 +368,15 @@ begin
         case LOWORD(WP) of
           1:
           begin
-            if HIWORD(WP) = LBN_SELCHANGE then begin
+            if HIWORD(WP) = LBN_SELCHANGE then
+            begin
               SetFocus(FMainWindow);
               Playing := PlayModeComboBox;
             end;
             Result := AVIUTL_TRUE;
           end;
-          2: begin
+          2:
+          begin
             SetFocus(FMainWindow);
             CaptureRange(Edit, Filter);
             Result := AVIUTL_TRUE;
@@ -381,7 +387,8 @@ begin
               SetFocus(FMainWindow);
             Result := AVIUTL_FALSE;
           end;
-          4: begin
+          4:
+          begin
             SetFocus(FMainWindow);
             ClearCache(Edit, Filter);
             Result := AVIUTL_TRUE;
@@ -430,7 +437,8 @@ var
   Src, Dest: Pointer;
 begin
   Result := True;
-  if FCapturing then begin
+  if FCapturing then
+  begin
     FMappedViewHeader^.A := fpip^.X;
     FMappedViewHeader^.B := fpip^.Y;
     FMappedViewHeader^.C := fpip^.YCSize;
@@ -450,15 +458,19 @@ begin
         end;
         Put(fpip^.Frame + 1, X * fpip^.Y + SizeOf(TViewHeader));
       end;
-      1: begin // 1/4
-        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
+      1:
+      begin // 1/4
+        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
+          fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
       end;
       2, 3:
       begin // 1/16, 1/64
         X := fpip^.X;
         Y := fpip^.Y;
-        DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
-        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData, fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
+        DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize,
+          ScaleMap[FMappedViewHeader^.D]);
+        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
+          fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
       end;
     end;
 
@@ -471,7 +483,8 @@ begin
 
     Exit;
   end;
-  if not FPlaying then Exit;
+  if not FPlaying then
+    Exit;
   try
     Len := Get(fpip^.Frame + 1);
     if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
@@ -492,8 +505,10 @@ begin
             Inc(Src, X);
           end;
         end;
-        1: begin // 1/4
-          DecodeNV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A, FMappedViewHeader^.B, fpip^.LineSize);
+        1:
+        begin // 1/4
+          DecodeNV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A,
+            FMappedViewHeader^.B, fpip^.LineSize);
         end;
         2, 3:
         begin // 1/16, 1/64
@@ -501,7 +516,8 @@ begin
           Y := FMappedViewHeader^.B;
           CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.D]);
           DecodeNV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
-          UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A, FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
+          UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A,
+            FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
         end;
       end;
     end
@@ -513,8 +529,10 @@ begin
         255, 0, 0, nil, nil);
     end;
   except
-    on E: Exception do begin
-      OutputDebugStringW(PWideChar(WideString('[' + PluginName + '] ビデオ処理中にエラーが発生しました。'#13#10#13#10 + E.Message)));
+    on E: Exception do
+    begin
+      OutputDebugStringW(PWideChar(WideString('[' + PluginName +
+        '] ビデオ処理中にエラーが発生しました。'#13#10#13#10 + E.Message)));
       Result := False;
     end;
   end;
@@ -525,7 +543,8 @@ var
   Len: integer;
 begin
   Result := True;
-  if FCapturing then begin
+  if FCapturing then
+  begin
     Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
     FMappedViewHeader^.A := fpip^.AudioN;
     FMappedViewHeader^.B := fpip^.AudioCh;
@@ -533,7 +552,8 @@ begin
     Put(-fpip^.Frame - 1, Len + SizeOf(TViewHeader));
     Exit;
   end;
-  if not FPlaying then Exit;
+  if not FPlaying then
+    Exit;
   try
     Len := Get(-fpip^.Frame - 1);
     if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
@@ -541,11 +561,13 @@ begin
       Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
         fpip^.AudioN * SizeOf(smallint))
     else
-      FillChar(fpip^.AudioP^, fpip^.AudioCh *
-        fpip^.AudioN * SizeOf(smallint), 0);
+      FillChar(fpip^.AudioP^, fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint), 0);
   except
-    on E: Exception do begin
-      OutputDebugStringW(PWideChar(WideString('[' + PluginName + '] オーディオ処理中にエラーが発生しました。'#13#10#13#10 + E.Message)));
+    on E: Exception do
+    begin
+      OutputDebugStringW(PWideChar(WideString('[' + PluginName +
+        '] オーディオ処理中にエラーが発生しました。'#13#10#13#10 +
+        E.Message)));
       Result := False;
     end;
   end;
@@ -716,20 +738,24 @@ procedure TRamPreview.SetPlaying(AValue: boolean);
 var
   I: integer;
 begin
-  if FPlaying = AValue then Exit;
+  if FPlaying = AValue then
+    Exit;
   FPlaying := AValue;
   PlayModeComboBox := AValue;
 
-  if not FPlaying then begin
+  if not FPlaying then
+  begin
     for I := Low(FFilters) to High(FFilters) do
       FFilters[I]^.FuncProc := FOrigProcs[I];
     Exit;
   end;
 
   SetLength(FOrigProcs, Length(FFilters));
-  for I := Low(FFilters) to High(FFilters) do begin
+  for I := Low(FFilters) to High(FFilters) do
+  begin
     FOrigProcs[I] := FFilters[I]^.FuncProc;
-    if (FOrigProcs[I] <> nil) and (FOrigProcs[I] <> @FilterFuncProc) and (FOrigProcs[I] <> @FilterAudioFuncProc) then
+    if (FOrigProcs[I] <> nil) and (FOrigProcs[I] <> @FilterFuncProc) and
+      (FOrigProcs[I] <> @FilterAudioFuncProc) then
       FFilters[I]^.FuncProc := @DummyFuncProc;
   end;
 end;
@@ -887,14 +913,13 @@ end;
 
 procedure TRamPreview.UpdateStatusLabel();
 begin
-  if FRemoteProcess.Running then begin
+  if FRemoteProcess.Running then
+  begin
     if FCapturing then
-      SetWindowText(FStatusLabel, PChar(Format('%d%% [%d/%d] %s', [
-        (FCurrentFrame - FStartFrame) * 100 div (FEndFrame - FStartFrame),
-        FCurrentFrame - FStartFrame + 1,
-        FEndFrame - FStartFrame + 1,
-        BytesToStr(Stat())
-      ])))
+      SetWindowText(FStatusLabel,
+        PChar(Format('%d%% [%d/%d] %s', [(FCurrentFrame - FStartFrame) *
+        100 div (FEndFrame - FStartFrame), FCurrentFrame - FStartFrame + 1,
+        FEndFrame - FStartFrame + 1, BytesToStr(Stat())])))
     else
       SetWindowText(FStatusLabel, PChar(BytesToStr(Stat())));
   end

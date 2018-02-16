@@ -17,7 +17,8 @@ uses
 
 type
   LPGETSAVEFILENAMEA = function(var OFN: OPENFILENAME): HResult; stdcall;
-  LPMESSAGEBOXA = function(hWnd:HWND; lpText:LPCSTR; lpCaption:LPCSTR; uType:UINT):longint; stdcall;
+  LPMESSAGEBOXA = function(hWnd: HWND; lpText: LPCSTR; lpCaption: LPCSTR;
+    uType: UINT): longint; stdcall;
 
   PImageImportByName = ^TImageImportByName;
 
@@ -84,17 +85,20 @@ end;
 
 function MyGetSaveFileNameA(var OFN: OPENFILENAME): HResult; stdcall;
 begin
-  if SuppressGSFN then begin
+  if SuppressGSFN then
+  begin
     Result := 1;
     Exit;
   end;
   Result := pGetSaveFileNameA(OFN);
 end;
 
-function MyMessageBoxA(hWnd:HWND; lpText:LPCSTR; lpCaption:LPCSTR; uType:UINT):longint; stdcall;
+function MyMessageBoxA(hWnd: HWND; lpText: LPCSTR; lpCaption: LPCSTR;
+  uType: UINT): longint; stdcall;
 begin
-  if SuppressMSGBOX then begin
-    Result := IDOK;
+  if SuppressMSGBOX then
+  begin
+    Result := idOk;
     Exit;
   end;
   Result := pMessageBoxA(hWnd, lpText, lpCaption, uType);
@@ -137,27 +141,29 @@ begin
     while PRVA_Import^.thFunction <> nil do
     begin
       if Install then
-      for i := 0 to Length(HookEntries) - 1 do
-      begin
-        if PRVA_Import^.thFunction = HookEntries[i].OriginalProc then
+        for i := 0 to Length(HookEntries) - 1 do
         begin
-          VirtualProtect(PRVA_Import, sizeof(Pointer), PAGE_EXECUTE_READWRITE, OldProtect);
-          PRVA_Import^.thFunction := HookEntries[i].HookProc;
-          VirtualProtect(PRVA_Import, sizeof(Pointer), OldProtect, OldProtect);
-          break;
-        end;
-      end
+          if PRVA_Import^.thFunction = HookEntries[i].OriginalProc then
+          begin
+            VirtualProtect(PRVA_Import, sizeof(Pointer), PAGE_EXECUTE_READWRITE,
+              OldProtect);
+            PRVA_Import^.thFunction := HookEntries[i].HookProc;
+            VirtualProtect(PRVA_Import, sizeof(Pointer), OldProtect, OldProtect);
+            break;
+          end;
+        end
       else
-      for i := 0 to Length(HookEntries) - 1 do
-      begin
-        if PRVA_Import^.thFunction = HookEntries[i].HookProc then
+        for i := 0 to Length(HookEntries) - 1 do
         begin
-          VirtualProtect(PRVA_Import, sizeof(Pointer), PAGE_EXECUTE_READWRITE, OldProtect);
-          PRVA_Import^.thFunction := HookEntries[i].OriginalProc;
-          VirtualProtect(PRVA_Import, sizeof(Pointer), OldProtect, OldProtect);
-          break;
+          if PRVA_Import^.thFunction = HookEntries[i].HookProc then
+          begin
+            VirtualProtect(PRVA_Import, sizeof(Pointer), PAGE_EXECUTE_READWRITE,
+              OldProtect);
+            PRVA_Import^.thFunction := HookEntries[i].OriginalProc;
+            VirtualProtect(PRVA_Import, sizeof(Pointer), OldProtect, OldProtect);
+            break;
+          end;
         end;
-      end;
       Inc(PRVA_Import);
     end;
     Inc(PImports);
@@ -187,8 +193,7 @@ begin
     OriginalProc := pGetSaveFileNameA;
     HookProc := @MyGetSaveFileNameA;
   end;
-  pMessageBoxA := LPMESSAGEBOXA(GetProcAddress(hUSER32,
-    'MessageBoxA'));
+  pMessageBoxA := LPMESSAGEBOXA(GetProcAddress(hUSER32, 'MessageBoxA'));
   with HookEntries[1] do
   begin
     ProcName := 'MessageBoxA';
@@ -209,4 +214,3 @@ begin
 end;
 
 end.
-

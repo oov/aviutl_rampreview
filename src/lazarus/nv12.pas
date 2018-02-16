@@ -6,7 +6,8 @@ unit NV12;
 interface
 
 procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
-procedure DownScaleYC48(Dest: Pointer; Src: Pointer; var W, H: integer; SLine: integer; const Factor: integer);
+procedure DownScaleYC48(Dest: Pointer; Src: Pointer; var W, H: integer;
+  SLine: integer; const Factor: integer);
 procedure UpScaleYC48(Dest: Pointer; Src: Pointer; const OrigW, OrigH: integer;
   const DLine: integer; const Factor: integer);
 function EncodeYC48ToNV12(const Dest: Pointer; const Src: Pointer;
@@ -126,7 +127,7 @@ end;
 
 type
   TUV = record
-    U, V: Byte;
+    U, V: byte;
   end;
   PUV = ^TUV;
 
