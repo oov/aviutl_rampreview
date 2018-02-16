@@ -192,6 +192,7 @@ end;
 function OutputFuncOutput(OI: POutputInfo): AviUtlBool; cdecl;
 var
   I, Sec, SamplePos, NextSamplePos, Read: integer;
+  aborted: AviUtlBool;
 begin
   if not RamPreview.FCapturing then begin
     Result := AVIUTL_FALSE;
@@ -200,7 +201,10 @@ begin
   Sec := 0;
   NextSamplePos := 0;
   for I := 0 to OI^.N - 1 do begin
-    if OI^.IsAbort() <> AVIUTL_FALSE then break;
+    DisableMessageBox(True);
+    aborted := OI^.IsAbort();
+    DisableMessageBox(False);
+    if aborted <> AVIUTL_FALSE then break;
     OI^.RestTimeDisp(I, OI^.N);
     SamplePos := NextSamplePos;
     Inc(Sec, OI^.Scale);
@@ -862,9 +866,9 @@ begin
 
   Playing := False;
   FCapturing := True;
-  SwitchHook(True);
+  DisableGetSaveFileName(True);
   Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
-  SwitchHook(False);
+  DisableGetSaveFileName(False);
   FCapturing := False;
   Playing := True;
 

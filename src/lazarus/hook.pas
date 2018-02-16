@@ -7,7 +7,8 @@ interface
 
 procedure InitHook();
 procedure FreeHook();
-procedure SwitchHook(b: boolean);
+procedure DisableGetSaveFileName(const b: boolean);
+procedure DisableMessageBox(const b: boolean);
 
 implementation
 
@@ -16,6 +17,7 @@ uses
 
 type
   LPGETSAVEFILENAMEA = function(var OFN: OPENFILENAME): HResult; stdcall;
+  LPMESSAGEBOXA = function(hWnd:HWND; lpText:LPCSTR; lpCaption:LPCSTR; uType:UINT):longint; stdcall;
 
   PImageImportByName = ^TImageImportByName;
 
@@ -66,23 +68,39 @@ var
   HookEntries: array of TAPIHookEntry;
 
   pGetSaveFileNameA: LPGETSAVEFILENAMEA;
-  Suppress: boolean;
+  pMessageBoxA: LPMESSAGEBOXA;
+  SuppressGSFN: boolean;
+  SuppressMSGBOX: boolean;
 
-procedure SwitchHook(b: boolean);
+procedure DisableGetSaveFileName(const b: boolean);
 begin
-  Suppress := b;
+  SuppressGSFN := b;
+end;
+
+procedure DisableMessageBox(const b: boolean);
+begin
+  SuppressMSGBOX := b;
 end;
 
 function MyGetSaveFileNameA(var OFN: OPENFILENAME): HResult; stdcall;
 begin
-  if Suppress then begin
+  if SuppressGSFN then begin
     Result := 1;
     Exit;
   end;
   Result := pGetSaveFileNameA(OFN);
 end;
 
-procedure Hook(hModule: THandle);
+function MyMessageBoxA(hWnd:HWND; lpText:LPCSTR; lpCaption:LPCSTR; uType:UINT):longint; stdcall;
+begin
+  if SuppressMSGBOX then begin
+    Result := IDOK;
+    Exit;
+  end;
+  Result := pMessageBoxA(hWnd, lpText, lpCaption, uType);
+end;
+
+procedure Hook(hModule: THandle; Install: boolean);
 var
   i: integer;
 
@@ -118,12 +136,24 @@ begin
     PRVA_Import := PImageThunkData(PtrUInt(PImports^.FirstThunk) + PtrUInt(hModule));
     while PRVA_Import^.thFunction <> nil do
     begin
+      if Install then
       for i := 0 to Length(HookEntries) - 1 do
       begin
         if PRVA_Import^.thFunction = HookEntries[i].OriginalProc then
         begin
           VirtualProtect(PRVA_Import, sizeof(Pointer), PAGE_EXECUTE_READWRITE, OldProtect);
           PRVA_Import^.thFunction := HookEntries[i].HookProc;
+          VirtualProtect(PRVA_Import, sizeof(Pointer), OldProtect, OldProtect);
+          break;
+        end;
+      end
+      else
+      for i := 0 to Length(HookEntries) - 1 do
+      begin
+        if PRVA_Import^.thFunction = HookEntries[i].HookProc then
+        begin
+          VirtualProtect(PRVA_Import, sizeof(Pointer), PAGE_EXECUTE_READWRITE, OldProtect);
+          PRVA_Import^.thFunction := HookEntries[i].OriginalProc;
           VirtualProtect(PRVA_Import, sizeof(Pointer), OldProtect, OldProtect);
           break;
         end;
@@ -137,15 +167,17 @@ end;
 procedure InitHook();
 var
   dir: WideString;
+  hUSER32: THandle;
 begin
   SetLength(dir, GetSystemDirectoryW(nil, 0));
   GetSystemDirectoryW(@dir[1], Length(dir));
   dir := WideString(PWideChar(dir)) + WideString('\comdlg32.dll');
+  hUSER32 := GetModuleHandleW(user32);
   hCOMDLG32DLL := GetModuleHandleW(PWideChar(dir));
   if hCOMDLG32DLL = 0 then
     hCOMDLG32DLL := LoadLibraryW(PWideChar(dir));
 
-  SetLength(HookEntries, 1);
+  SetLength(HookEntries, 2);
   pGetSaveFileNameA := LPGETSAVEFILENAMEA(GetProcAddress(hCOMDLG32DLL,
     'GetSaveFileNameA'));
   with HookEntries[0] do
@@ -155,13 +187,24 @@ begin
     OriginalProc := pGetSaveFileNameA;
     HookProc := @MyGetSaveFileNameA;
   end;
+  pMessageBoxA := LPMESSAGEBOXA(GetProcAddress(hUSER32,
+    'MessageBoxA'));
+  with HookEntries[1] do
+  begin
+    ProcName := 'MessageBoxA';
+    Module := hUSER32;
+    OriginalProc := pMessageBoxA;
+    HookProc := @MyMessageBoxA;
+  end;
 
-  Suppress := False;
-  Hook(GetModuleHandle(nil));
+  SuppressGSFN := False;
+  SuppressMSGBOX := False;
+  Hook(GetModuleHandle(nil), True);
 end;
 
 procedure FreeHook();
 begin
+  Hook(GetModuleHandle(nil), False);
   FreeLibrary(hCOMDLG32DLL);
 end;
 
