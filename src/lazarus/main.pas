@@ -22,7 +22,7 @@ type
     FFilters: array of PFilter;
     FOrigProcs: array of TProcFunc;
     FWindow, FFont, FPlayModeList, FResolution, FCacheCreateButton,
-    FCacheClearButton, FCacheSizeLabel: THandle;
+    FCacheClearButton, FStatusLabel: THandle;
     FFontHeight: integer;
 
     FMappedFile: THandle;
@@ -32,6 +32,8 @@ type
     FCapturing: boolean;
     FPlaying: boolean;
     FCacheSizeUpdatedAt: cardinal;
+
+    FStartFrame, FEndFrame, FCurrentFrame: integer;
 
     function GetResolution: integer;
     procedure PrepareIPC();
@@ -66,7 +68,7 @@ type
       LP: LPARAM; Edit: Pointer; Filter: PFilter): integer;
     function FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
     function FilterAudioProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
-    procedure UpdateCacheSize();
+    procedure UpdateStatusLabel();
   public
     constructor Create();
     destructor Destroy(); override;
@@ -296,10 +298,10 @@ begin
       Inc(Y, Height);
 
       Height := FFontHeight;
-      FCacheSizeLabel := CreateWindowW('STATIC', PWideChar(''),
+      FStatusLabel := CreateWindowW('STATIC', PWideChar(''),
         WS_CHILD or WS_VISIBLE or ES_RIGHT, 8, Y, 160, Height,
         Window, 3, Filter^.DLLHInst, nil);
-      SendMessageW(FCacheSizeLabel, WM_SETFONT, WPARAM(FFont), 0);
+      SendMessageW(FStatusLabel, WM_SETFONT, WPARAM(FFont), 0);
       Inc(Y, Height + 8);
 
       Inc(Y, GetSystemMetrics(SM_CYCAPTION) + GetSystemMetrics(SM_CYFIXEDFRAME) * 2);
@@ -456,10 +458,11 @@ begin
       end;
     end;
 
+    FCurrentFrame := fpip^.Frame;
     if GetTickCount() > FCacheSizeUpdatedAt + 500 then
     begin
       FCacheSizeUpdatedAt := GetTickCount();
-      UpdateCacheSize();
+      UpdateStatusLabel();
     end;
 
     Exit;
@@ -848,7 +851,6 @@ end;
 
 procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
-  StartFrame, EndFrame: integer;
   FI: TFileInfo;
 begin
   FillChar(FI, SizeOf(TFileInfo), 0);
@@ -857,7 +859,7 @@ begin
       '編集中のファイルの情報取得に失敗しました');
   if (FI.Width = 0) or (FI.Height = 0) then
     Exit;
-  if Filter^.ExFunc^.GetSelectFrame(Edit, StartFrame, EndFrame) = AVIUTL_FALSE then
+  if Filter^.ExFunc^.GetSelectFrame(Edit, FStartFrame, FEndFrame) = AVIUTL_FALSE then
     raise Exception.Create('選択範囲を取得できませんでした');
 
   Playing := False;
@@ -868,8 +870,8 @@ begin
   FCapturing := False;
   Playing := True;
 
-  UpdateCacheSize();
-  Filter^.ExFunc^.SetFrame(Edit, StartFrame);
+  UpdateStatusLabel();
+  Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
 end;
 
 procedure TRamPreview.ClearCache(Edit: Pointer; Filter: PFilter);
@@ -877,18 +879,26 @@ begin
   if not FRemoteProcess.Running then
     Exit;
   Clear();
-  UpdateCacheSize();
+  UpdateStatusLabel();
   Playing := False;
 end;
 
-procedure TRamPreview.UpdateCacheSize();
+procedure TRamPreview.UpdateStatusLabel();
 begin
-  if FRemoteProcess.Running then
-    SetWindowTextW(FCacheSizeLabel,
-      PWideChar(WideString(BytesToStr(Stat()))))
+  if FRemoteProcess.Running then begin
+    if FCapturing then
+      SetWindowText(FStatusLabel, PChar(Format('%d%% [%d/%d] %s', [
+        (FCurrentFrame - FStartFrame) * 100 div (FEndFrame - FStartFrame),
+        FCurrentFrame - FStartFrame + 1,
+        FEndFrame - FStartFrame + 1,
+        BytesToStr(Stat())
+      ])))
+    else
+      SetWindowText(FStatusLabel, PChar(BytesToStr(Stat())));
+  end
   else
-    SetWindowTextW(FCacheSizeLabel, '');
-  EnableWindow(FCacheSizeLabel, True);
+    SetWindowTextW(FStatusLabel, '');
+  EnableWindow(FStatusLabel, True);
 end;
 
 procedure TRamPreview.ClearStorageCache(Edit: Pointer; Filter: PFilter);
@@ -896,7 +906,7 @@ begin
   if not FRemoteProcess.Running then
     Exit;
   ClearS();
-  UpdateCacheSize();
+  UpdateStatusLabel();
 end;
 
 procedure TRamPreview.PrepareIPC();
