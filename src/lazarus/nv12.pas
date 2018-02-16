@@ -6,14 +6,14 @@ unit NV12;
 interface
 
 procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
-procedure DownScaleYC48(Dest: Pointer; Src: Pointer; var W, H: integer;
+procedure DownScaleYC48(Dest, Src: Pointer; var W, H: integer;
   SLine: integer; const Factor: integer);
-procedure UpScaleYC48(Dest: Pointer; Src: Pointer; const OrigW, OrigH: integer;
+procedure UpScaleYC48(Dest, Src: Pointer; const OrigW, OrigH: integer;
   const DLine: integer; const Factor: integer);
-function EncodeYC48ToNV12(const Dest: Pointer; const Src: Pointer;
-  const W: integer; const H: integer; const SLine: integer): integer;
-procedure DecodeNV12ToYC48(const Dest: Pointer; const Src: Pointer;
-  const W, H: integer; const DLine: integer);
+function EncodeYC48ToNV12(const Dest, Src: Pointer; const W, H: integer;
+  const SLine: integer): integer;
+procedure DecodeNV12ToYC48(const Dest, Src: Pointer; const W, H: integer;
+  const DLine: integer);
 
 implementation
 
@@ -26,8 +26,8 @@ begin
   H := (H + Factor - 1) div Factor;
 end;
 
-procedure DownScaleYC48(Dest: Pointer; Src: Pointer; var W: integer;
-  var H: integer; SLine: integer; const Factor: integer);
+procedure DownScaleYC48(Dest, Src: Pointer; var W: integer; var H: integer;
+  SLine: integer; const Factor: integer);
 var
   X, Y: integer;
   S: PPixelYC;
@@ -50,7 +50,7 @@ begin
   end;
 end;
 
-procedure UpScaleYC48(Dest: Pointer; Src: Pointer; const OrigW, OrigH: integer;
+procedure UpScaleYC48(Dest, Src: Pointer; const OrigW, OrigH: integer;
   const DLine: integer; const Factor: integer);
 var
   SW, SH, FW, FH, X, Y, I, OrigLine: integer;
@@ -132,7 +132,7 @@ type
   PUV = ^TUV;
 
 function EncodeYC48ToNV12(const Dest: Pointer; const Src: Pointer;
-  const W: integer; const H: integer; const SLine: integer): integer;
+  const W, H: integer; const SLine: integer): integer;
 var
   DLine, X, Y, YWB, YHB, UVW, UVH: integer;
   S1, S2: PPixelYC;
