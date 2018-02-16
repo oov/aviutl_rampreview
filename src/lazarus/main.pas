@@ -509,11 +509,10 @@ begin
         255, 0, 0, nil, nil);
     end;
   except
-    on E: Exception do
-      MessageBoxW(FWindow, PWideChar(
-        WideString('処理中にエラーが発生しました。'#13#10#13#10 +
-        E.Message)),
-        PluginName, MB_ICONERROR);
+    on E: Exception do begin
+      OutputDebugStringW(PWideChar(WideString('[' + PluginName + '] ビデオ処理中にエラーが発生しました。'#13#10#13#10 + E.Message)));
+      Result := False;
+    end;
   end;
 end;
 
@@ -541,11 +540,10 @@ begin
       FillChar(fpip^.AudioP^, fpip^.AudioCh *
         fpip^.AudioN * SizeOf(smallint), 0);
   except
-    on E: Exception do
-      MessageBoxW(FWindow, PWideChar(
-        WideString('処理中にエラーが発生しました。'#13#10#13#10 +
-        WideString(E.Message))),
-        PluginName, MB_ICONERROR);
+    on E: Exception do begin
+      OutputDebugStringW(PWideChar(WideString('[' + PluginName + '] オーディオ処理中にエラーが発生しました。'#13#10#13#10 + E.Message)));
+      Result := False;
+    end;
   end;
 end;
 
