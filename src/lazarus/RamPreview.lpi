@@ -73,9 +73,9 @@
         <UnitName Value="Hook"/>
       </Unit6>
       <Unit7>
-        <Filename Value="yv12.pas"/>
+        <Filename Value="nv12.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="YV12"/>
+        <UnitName Value="NV12"/>
       </Unit7>
     </Units>
   </ProjectOptions>

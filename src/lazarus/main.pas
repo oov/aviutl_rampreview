@@ -89,7 +89,7 @@ var
 implementation
 
 uses
-  Hook, YV12, Util, Ver;
+  Hook, NV12, Util, Ver;
 
 const
   PluginName = '拡張編集RAMプレビュー';
@@ -445,14 +445,14 @@ begin
         Put(fpip^.Frame + 1, X * fpip^.Y + SizeOf(TViewHeader));
       end;
       1: begin // 1/4
-        Put(fpip^.Frame + 1, EncodeYC48ToYV12(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
+        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
       end;
       2, 3:
       begin // 1/16, 1/64
         X := fpip^.X;
         Y := fpip^.Y;
         DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
-        Put(fpip^.Frame + 1, EncodeYC48ToYV12(FMappedViewData, fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
+        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData, fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
       end;
     end;
 
@@ -486,14 +486,14 @@ begin
           end;
         end;
         1: begin // 1/4
-          DecodeYV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A, FMappedViewHeader^.B, fpip^.LineSize);
+          DecodeNV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A, FMappedViewHeader^.B, fpip^.LineSize);
         end;
         2, 3:
         begin // 1/16, 1/64
           X := FMappedViewHeader^.A;
           Y := FMappedViewHeader^.B;
           CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.D]);
-          DecodeYV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
+          DecodeNV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
           UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A, FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
         end;
       end;

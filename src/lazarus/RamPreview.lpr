@@ -6,7 +6,7 @@ library RamPreview;
 uses
   SysUtils,
   AviUtl,
-  Main, Remote, Util, StorageAPI, Hook, YV12;
+  Main, Remote, Util, StorageAPI, Hook, NV12;
 
 exports
   GetFilterTableList,
