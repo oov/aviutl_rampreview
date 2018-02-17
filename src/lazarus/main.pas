@@ -976,8 +976,7 @@ begin
   if FErrorMessage <> '' then
   begin
     MessageBoxW(FWindow, PWideChar(
-      'キャッシュデータの作成中にエラーが発生しました。'#13#10#13#10 +
-      FErrorMessage),
+      'キャッシュデータの作成中にエラーが発生しました。'#13#10#13#10 + FErrorMessage),
       PluginName, MB_ICONERROR);
     Exit;
   end;
