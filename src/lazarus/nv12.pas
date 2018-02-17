@@ -5,6 +5,7 @@ unit NV12;
 
 interface
 
+procedure CopyYC48(Dest, Src: Pointer; const W, H, SLine, DLine: integer);
 procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
 procedure DownScaleYC48(Dest, Src: Pointer; var W, H: integer;
   SLine: integer; const Factor: integer);
@@ -19,6 +20,21 @@ implementation
 
 uses
   AviUtl;
+
+procedure CopyYC48(Dest, Src: Pointer; const W, H, SLine, DLine: integer);
+var
+  X, Y, Width: integer;
+  S: PByte absolute Src;
+  D: PByte absolute Dest;
+begin
+  Width := W * SizeOf(TPixelYC);
+  for Y := 0 to H - 1 do
+  begin
+    Move(S^, D^, Width);
+    Inc(S, SLine);
+    Inc(D, DLine);
+  end;
+end;
 
 procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
 begin

@@ -456,8 +456,7 @@ const
   ScaleMap: array[0..3] of integer = (1, 1, 2, 4);
 var
   S: string;
-  X, Y, Line, Len: integer;
-  Src, Dest: Pointer;
+  X, Y, Len: integer;
 begin
   Result := True;
   try
@@ -470,16 +469,8 @@ begin
       case FMappedViewHeader^.D of
         0:
         begin // Full
-          Src := fpip^.YCPEdit;
-          Dest := FMappedViewData;
-          Line := fpip^.LineSize;
-          X := fpip^.X * fpip^.YCSize;
-          for Y := 0 to fpip^.Y - 1 do
-          begin
-            Move(Src^, Dest^, X);
-            Inc(Src, Line);
-            Inc(Dest, X);
-          end;
+          CopyYC48(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y,
+            fpip^.LineSize, fpip^.X * fpip^.YCSize);
           Put(fpip^.Frame + 1, X * fpip^.Y + SizeOf(TViewHeader));
         end;
         1:
@@ -517,16 +508,8 @@ begin
       case FMappedViewHeader^.D of
         0:
         begin // Full
-          Src := FMappedViewData;
-          Dest := fpip^.YCPEdit;
-          Line := fpip^.LineSize;
-          X := fpip^.X * fpip^.YCSize;
-          for Y := 0 to fpip^.Y - 1 do
-          begin
-            Move(Src^, Dest^, X);
-            Inc(Dest, Line);
-            Inc(Src, X);
-          end;
+          CopyYC48(fpip^.YCPEdit, FMappedViewData, fpip^.X, fpip^.Y,
+            fpip^.X * fpip^.YCSize, fpip^.LineSize);
         end;
         1:
         begin // 1/4
