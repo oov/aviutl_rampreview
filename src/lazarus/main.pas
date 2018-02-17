@@ -559,6 +559,7 @@ begin
   try
     if FCapturing then
     begin
+      if (FStartFrame > fpip^.Frame)or(fpip^.Frame > FEndFrame) then Exit;
       Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
       FMappedViewHeader^.A := fpip^.AudioN;
       FMappedViewHeader^.B := fpip^.AudioCh;
