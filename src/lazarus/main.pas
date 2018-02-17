@@ -815,7 +815,8 @@ begin
   if not FPlaying then
   begin
     for I := Low(FFilters) to High(FFilters) do
-      FFilters[I]^.FuncProc := FOrigProcs[I];
+      if FFilters[I]^.FuncProc = @DummyFuncProc then
+        FFilters[I]^.FuncProc := FOrigProcs[I];
     Exit;
   end;
 
