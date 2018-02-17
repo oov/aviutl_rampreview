@@ -542,6 +542,9 @@ begin
         FErrorMessage := WideString(
           'ビデオ処理中にエラーが発生しました。'#13#10#13#10 +
           E.Message);
+        if not FCapturing then
+          MessageBoxW(FWindow,
+            PWideChar(FErrorMessage), PluginName, MB_ICONERROR);
       end;
       Result := False;
     end;
@@ -580,6 +583,9 @@ begin
         FErrorMessage := WideString(
           'オーディオ処理中にエラーが発生しました。'#13#10#13#10 +
           E.Message);
+        if not FCapturing then
+          MessageBoxW(FWindow,
+            PWideChar(FErrorMessage), PluginName, MB_ICONERROR);
       end;
       Result := False;
     end;
