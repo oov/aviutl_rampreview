@@ -32,6 +32,7 @@ type
     FCapturing: boolean;
     FPlaying: boolean;
     FCacheSizeUpdatedAt: cardinal;
+    FErrorMessage: WideString;
 
     FStartFrame, FEndFrame, FCurrentFrame: integer;
 
@@ -225,6 +226,11 @@ begin
     DisableMessageBox(False);
     if aborted <> AVIUTL_FALSE then
       break;
+    if Length(RamPreview.FErrorMessage) > 0 then
+    begin
+      Result := AVIUTL_TRUE;
+      Exit;
+    end;
     OI^.RestTimeDisp(I, OI^.N);
     SamplePos := NextSamplePos;
     Inc(Sec, OI^.Scale);
@@ -454,55 +460,55 @@ var
   Src, Dest: Pointer;
 begin
   Result := True;
-  if FCapturing then
-  begin
-    FMappedViewHeader^.A := fpip^.X;
-    FMappedViewHeader^.B := fpip^.Y;
-    FMappedViewHeader^.C := fpip^.YCSize;
-    FMappedViewHeader^.D := Resolution;
-    case FMappedViewHeader^.D of
-      0:
-      begin // Full
-        Src := fpip^.YCPEdit;
-        Dest := FMappedViewData;
-        Line := fpip^.LineSize;
-        X := fpip^.X * fpip^.YCSize;
-        for Y := 0 to fpip^.Y - 1 do
-        begin
-          Move(Src^, Dest^, X);
-          Inc(Src, Line);
-          Inc(Dest, X);
-        end;
-        Put(fpip^.Frame + 1, X * fpip^.Y + SizeOf(TViewHeader));
-      end;
-      1:
-      begin // 1/4
-        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
-          fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
-      end;
-      2, 3:
-      begin // 1/16, 1/64
-        X := fpip^.X;
-        Y := fpip^.Y;
-        DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize,
-          ScaleMap[FMappedViewHeader^.D]);
-        Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
-          fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
-      end;
-    end;
-
-    FCurrentFrame := fpip^.Frame;
-    if GetTickCount() > FCacheSizeUpdatedAt + 500 then
-    begin
-      FCacheSizeUpdatedAt := GetTickCount();
-      UpdateStatusLabel();
-    end;
-
-    Exit;
-  end;
-  if not FPlaying then
-    Exit;
   try
+    if FCapturing then
+    begin
+      FMappedViewHeader^.A := fpip^.X;
+      FMappedViewHeader^.B := fpip^.Y;
+      FMappedViewHeader^.C := fpip^.YCSize;
+      FMappedViewHeader^.D := Resolution;
+      case FMappedViewHeader^.D of
+        0:
+        begin // Full
+          Src := fpip^.YCPEdit;
+          Dest := FMappedViewData;
+          Line := fpip^.LineSize;
+          X := fpip^.X * fpip^.YCSize;
+          for Y := 0 to fpip^.Y - 1 do
+          begin
+            Move(Src^, Dest^, X);
+            Inc(Src, Line);
+            Inc(Dest, X);
+          end;
+          Put(fpip^.Frame + 1, X * fpip^.Y + SizeOf(TViewHeader));
+        end;
+        1:
+        begin // 1/4
+          Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
+            fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
+        end;
+        2, 3:
+        begin // 1/16, 1/64
+          X := fpip^.X;
+          Y := fpip^.Y;
+          DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize,
+            ScaleMap[FMappedViewHeader^.D]);
+          Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
+            fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
+        end;
+      end;
+
+      FCurrentFrame := fpip^.Frame;
+      if GetTickCount() > FCacheSizeUpdatedAt + 500 then
+      begin
+        FCacheSizeUpdatedAt := GetTickCount();
+        UpdateStatusLabel();
+      end;
+
+      Exit;
+    end;
+    if not FPlaying then
+      Exit;
     Len := Get(fpip^.Frame + 1);
     if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
     begin
@@ -548,9 +554,12 @@ begin
   except
     on E: Exception do
     begin
-      OutputDebugStringW(PWideChar(WideString('[' + PluginName +
-        '] ビデオ処理中にエラーが発生しました。'#13#10#13#10 +
-        E.Message)));
+      if FErrorMessage = '' then
+      begin
+        FErrorMessage := WideString(
+          'ビデオ処理中にエラーが発生しました。'#13#10#13#10 +
+          E.Message);
+      end;
       Result := False;
     end;
   end;
@@ -561,18 +570,18 @@ var
   Len: integer;
 begin
   Result := True;
-  if FCapturing then
-  begin
-    Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
-    FMappedViewHeader^.A := fpip^.AudioN;
-    FMappedViewHeader^.B := fpip^.AudioCh;
-    Move(fpip^.AudioP^, FMappedViewData^, Len);
-    Put(-fpip^.Frame - 1, Len + SizeOf(TViewHeader));
-    Exit;
-  end;
-  if not FPlaying then
-    Exit;
   try
+    if FCapturing then
+    begin
+      Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
+      FMappedViewHeader^.A := fpip^.AudioN;
+      FMappedViewHeader^.B := fpip^.AudioCh;
+      Move(fpip^.AudioP^, FMappedViewData^, Len);
+      Put(-fpip^.Frame - 1, Len + SizeOf(TViewHeader));
+      Exit;
+    end;
+    if not FPlaying then
+      Exit;
     Len := Get(-fpip^.Frame - 1);
     if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
       (FMappedViewHeader^.B = fpip^.AudioCh) then
@@ -583,9 +592,12 @@ begin
   except
     on E: Exception do
     begin
-      OutputDebugStringW(PWideChar(WideString('[' + PluginName +
-        '] オーディオ処理中にエラーが発生しました。'#13#10#13#10 +
-        E.Message)));
+      if FErrorMessage = '' then
+      begin
+        FErrorMessage := WideString(
+          'オーディオ処理中にエラーが発生しました。'#13#10#13#10 +
+          E.Message);
+      end;
       Result := False;
     end;
   end;
@@ -963,14 +975,24 @@ begin
   if Filter^.ExFunc^.GetSelectFrame(Edit, FStartFrame, FEndFrame) = AVIUTL_FALSE then
     raise Exception.Create('選択範囲を取得できませんでした');
 
+  FErrorMessage := '';
   Playing := False;
   FCapturing := True;
   DisableGetSaveFileName(True);
   Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
   DisableGetSaveFileName(False);
   FCapturing := False;
-  Playing := True;
 
+  if FErrorMessage <> '' then
+  begin
+    MessageBoxW(FWindow, PWideChar(
+      'キャッシュデータの作成中にエラーが発生しました。'#13#10#13#10 +
+      FErrorMessage),
+      PluginName, MB_ICONERROR);
+    Exit;
+  end;
+
+  Playing := True;
   UpdateStatusLabel();
   Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
 end;
