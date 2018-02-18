@@ -953,9 +953,86 @@ begin
   FReceiver.Done();
 end;
 
+function SetFrameRateChangerToNone(const Window: THandle): integer;
+var
+  MainMenu, Settings, Changer: THandle;
+  I, N, ID: integer;
+  MII: TMenuItemInfo;
+begin
+  MainMenu := GetMenu(Window);
+  if MainMenu = 0 then
+    raise Exception.Create('Main menu not found');
+  N := GetMenuItemCount(MainMenu);
+  if N <> 7 then
+    raise Exception.Create('unexpected Main menu item count');
+
+  Settings := GetSubMenu(MainMenu, 2);
+  N := GetMenuItemCount(Settings);
+  if N < 8 then
+    raise Exception.Create('unexpected Settings menu item count');
+
+  Changer := GetSubMenu(Settings, N - 6);
+  N := GetMenuItemCount(Changer);
+  if N <> 8 then
+    raise Exception.Create('unexpected FrameRateChanger menu item count');
+
+  FillChar(MII, SizeOf(MII), 0);
+  MII.cbSize := SizeOf(TMenuItemInfo);
+  MII.fMask := MIIM_STATE or MIIM_ID;
+  for I := 0 to N - 1 do begin
+    if not GetMenuItemInfo(Changer, I, True, MII) then
+      raise Exception.Create('failed to GetMenuItemInfo');
+    if (MII.fState and MF_CHECKED) = MF_CHECKED then begin
+      Result := MII.wID;
+      break;
+    end;
+    if I = 0 then
+      ID := MII.wID;
+  end;
+  SendMessage(Window, WM_COMMAND, LOWORD(ID), 0);
+end;
+
+function SetDeinterlacerToNone(const Window: THandle): integer;
+var
+  MainMenu, Settings, Changer: THandle;
+  I, N, ID: integer;
+  MII: TMenuItemInfo;
+begin
+  MainMenu := GetMenu(Window);
+  if MainMenu = 0 then
+    raise Exception.Create('Main menu not found');
+  N := GetMenuItemCount(MainMenu);
+  if N <> 7 then
+    raise Exception.Create('unexpected Main menu item count');
+
+  Settings := GetSubMenu(MainMenu, 2);
+  N := GetMenuItemCount(Settings);
+  if N < 8 then
+    raise Exception.Create('unexpected Settings menu item count');
+
+  Changer := GetSubMenu(Settings, N - 5);
+  N := GetMenuItemCount(Changer);
+
+  FillChar(MII, SizeOf(MII), 0);
+  MII.cbSize := SizeOf(TMenuItemInfo);
+  MII.fMask := MIIM_STATE or MIIM_ID;
+  for I := 0 to N - 1 do begin
+    if not GetMenuItemInfo(Changer, I, True, MII) then
+      raise Exception.Create('failed to GetMenuItemInfo');
+    if (MII.fState and MF_CHECKED) = MF_CHECKED then begin
+      Result := MII.wID;
+      break;
+    end;
+    if I = 0 then
+      ID := MII.wID;
+  end;
+  SendMessage(Window, WM_COMMAND, LOWORD(ID), 0);
+end;
+
 procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
   FI: TFileInfo;
+  SelectedFrameRateChangerID, SelectedDeinterlacerID: integer;
 begin
   FillChar(FI, SizeOf(TFileInfo), 0);
   if Filter^.ExFunc^.GetFileInfo(Edit, @FI) = AVIUTL_FALSE then
@@ -966,25 +1043,32 @@ begin
   if Filter^.ExFunc^.GetSelectFrame(Edit, FStartFrame, FEndFrame) = AVIUTL_FALSE then
     raise Exception.Create('選択範囲を取得できませんでした');
 
-  FErrorMessage := '';
-  Playing := False;
-  FCapturing := True;
-  DisableGetSaveFileName(True);
-  Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
-  DisableGetSaveFileName(False);
-  FCapturing := False;
+  SelectedFrameRateChangerID := SetFrameRateChangerToNone(FMainWindow);
+  SelectedDeinterlacerID := SetDeinterlacerToNone(FMainWindow);
+  try
+    FErrorMessage := '';
+    Playing := False;
+    FCapturing := True;
+    DisableGetSaveFileName(True);
+    Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
+    DisableGetSaveFileName(False);
+    FCapturing := False;
 
-  if FErrorMessage <> '' then
-  begin
-    MessageBoxW(FWindow, PWideChar(
-      'キャッシュデータの作成中にエラーが発生しました。'#13#10#13#10 + FErrorMessage),
-      PluginName, MB_ICONERROR);
-    Exit;
+    if FErrorMessage <> '' then
+    begin
+      MessageBoxW(FWindow, PWideChar(
+        'キャッシュデータの作成中にエラーが発生しました。'#13#10#13#10 + FErrorMessage),
+        PluginName, MB_ICONERROR);
+      Exit;
+    end;
+
+    Playing := True;
+    UpdateStatusLabel();
+    Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
+  finally
+    SendMessage(FMainWindow, WM_COMMAND, LOWORD(SelectedFrameRateChangerID), 0);
+    SendMessage(FMainWindow, WM_COMMAND, LOWORD(SelectedDeinterlacerID), 0);
   end;
-
-  Playing := True;
-  UpdateStatusLabel();
-  Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
 end;
 
 procedure TRamPreview.ClearCache(Edit: Pointer; Filter: PFilter);
