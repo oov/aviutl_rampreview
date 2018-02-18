@@ -992,43 +992,6 @@ begin
   SendMessage(Window, WM_COMMAND, LOWORD(ID), 0);
 end;
 
-function SetDeinterlacerToNone(const Window: THandle): integer;
-var
-  MainMenu, Settings, Changer: THandle;
-  I, N, ID: integer;
-  MII: TMenuItemInfo;
-begin
-  MainMenu := GetMenu(Window);
-  if MainMenu = 0 then
-    raise Exception.Create('Main menu not found');
-  N := GetMenuItemCount(MainMenu);
-  if N <> 7 then
-    raise Exception.Create('unexpected Main menu item count');
-
-  Settings := GetSubMenu(MainMenu, 2);
-  N := GetMenuItemCount(Settings);
-  if N < 8 then
-    raise Exception.Create('unexpected Settings menu item count');
-
-  Changer := GetSubMenu(Settings, N - 5);
-  N := GetMenuItemCount(Changer);
-
-  FillChar(MII, SizeOf(MII), 0);
-  MII.cbSize := SizeOf(TMenuItemInfo);
-  MII.fMask := MIIM_STATE or MIIM_ID;
-  for I := 0 to N - 1 do begin
-    if not GetMenuItemInfo(Changer, I, True, MII) then
-      raise Exception.Create('failed to GetMenuItemInfo');
-    if (MII.fState and MF_CHECKED) = MF_CHECKED then begin
-      Result := MII.wID;
-      break;
-    end;
-    if I = 0 then
-      ID := MII.wID;
-  end;
-  SendMessage(Window, WM_COMMAND, LOWORD(ID), 0);
-end;
-
 procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
   FI: TFileInfo;
@@ -1044,7 +1007,6 @@ begin
     raise Exception.Create('選択範囲を取得できませんでした');
 
   SelectedFrameRateChangerID := SetFrameRateChangerToNone(FMainWindow);
-  SelectedDeinterlacerID := SetDeinterlacerToNone(FMainWindow);
   try
     FErrorMessage := '';
     Playing := False;
@@ -1067,7 +1029,6 @@ begin
     Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
   finally
     SendMessage(FMainWindow, WM_COMMAND, LOWORD(SelectedFrameRateChangerID), 0);
-    SendMessage(FMainWindow, WM_COMMAND, LOWORD(SelectedDeinterlacerID), 0);
   end;
 end;
 
