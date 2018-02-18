@@ -471,7 +471,7 @@ begin
         begin // Full
           CopyYC48(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y,
             fpip^.LineSize, fpip^.X * fpip^.YCSize);
-          Put(fpip^.Frame + 1, X * fpip^.Y + SizeOf(TViewHeader));
+          Put(fpip^.Frame + 1, fpip^.X * fpip^.YCSize * fpip^.Y + SizeOf(TViewHeader));
         end;
         1:
         begin // 1/4
