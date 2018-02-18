@@ -1002,8 +1002,8 @@ begin
   begin
     if FCapturing then
       SetWindowText(FStatusLabel,
-        PChar(Format('%d%% [%d/%d] %s', [(FCurrentFrame - FStartFrame) *
-        100 div (FEndFrame - FStartFrame), FCurrentFrame - FStartFrame + 1,
+        PChar(Format('%d%% [%d/%d] %s', [(FCurrentFrame - FStartFrame + 1) *
+        100 div (FEndFrame - FStartFrame + 1), FCurrentFrame - FStartFrame + 1,
         FEndFrame - FStartFrame + 1, BytesToStr(Stat())])))
     else
       SetWindowText(FStatusLabel, PChar(BytesToStr(Stat())));
