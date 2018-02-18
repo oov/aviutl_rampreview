@@ -1012,7 +1012,9 @@ begin
     Playing := False;
     FCapturing := True;
     DisableGetSaveFileName(True);
+    DisablePlaySound(True);
     Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
+    DisablePlaySound(False);
     DisableGetSaveFileName(False);
     FCapturing := False;
 

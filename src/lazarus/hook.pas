@@ -7,6 +7,7 @@ interface
 
 procedure InitHook();
 procedure FreeHook();
+procedure DisablePlaySound(const b: boolean);
 procedure DisableGetSaveFileName(const b: boolean);
 procedure DisableMessageBox(const b: boolean);
 
@@ -17,6 +18,7 @@ uses
 
 type
   LPGETSAVEFILENAMEA = function(var OFN: OPENFILENAME): HResult; stdcall;
+  LPPLAYSOUNDA =  function(pszSound: PChar; hMod: HMODULE; fdwSound: DWORD): WINBOOL; stdcall;
   LPMESSAGEBOXA = function(hWnd: HWND; lpText: LPCSTR; lpCaption: LPCSTR;
     uType: UINT): longint; stdcall;
 
@@ -65,17 +67,24 @@ type
   end;
 
 var
-  hCOMDLG32DLL: THandle;
+  hCOMDLG32DLL, hWINMMDLL: THandle;
   HookEntries: array of TAPIHookEntry;
 
   pGetSaveFileNameA: LPGETSAVEFILENAMEA;
+  pPlaySoundA: LPPLAYSOUNDA;
   pMessageBoxA: LPMESSAGEBOXA;
   SuppressGSFN: boolean;
+  SuppressPlaySound: boolean;
   SuppressMSGBOX: boolean;
 
 procedure DisableGetSaveFileName(const b: boolean);
 begin
   SuppressGSFN := b;
+end;
+
+procedure DisablePlaySound(const b: boolean);
+begin
+  SuppressPlaySound := b;
 end;
 
 procedure DisableMessageBox(const b: boolean);
@@ -91,6 +100,16 @@ begin
     Exit;
   end;
   Result := pGetSaveFileNameA(OFN);
+end;
+
+function MyPlaySoundA(pszSound: PChar; hMod: HMODULE; fdwSound: DWORD): WINBOOL; stdcall;
+begin
+  if SuppressPlaySound then
+  begin
+    Result := True;
+    Exit;
+  end;
+  Result := pPlaySoundA(pszSound, hMod, fdwSound);
 end;
 
 function MyMessageBoxA(hWnd: HWND; lpText: LPCSTR; lpCaption: LPCSTR;
@@ -172,18 +191,19 @@ end;
 
 procedure InitHook();
 var
-  dir: WideString;
+  dir, S: WideString;
   hUSER32: THandle;
 begin
+  hUSER32 := GetModuleHandleW(user32);
   SetLength(dir, GetSystemDirectoryW(nil, 0));
   GetSystemDirectoryW(@dir[1], Length(dir));
-  dir := WideString(PWideChar(dir)) + WideString('\comdlg32.dll');
-  hUSER32 := GetModuleHandleW(user32);
-  hCOMDLG32DLL := GetModuleHandleW(PWideChar(dir));
-  if hCOMDLG32DLL = 0 then
-    hCOMDLG32DLL := LoadLibraryW(PWideChar(dir));
+  dir := WideString(PWideChar(dir));
+  S := dir + WideString('\comdlg32.dll');
+  hCOMDLG32DLL := LoadLibraryW(PWideChar(S));
+  S := dir + WideString('\winmm.dll');
+  hWINMMDLL := LoadLibraryW(PWideChar(S));
 
-  SetLength(HookEntries, 2);
+  SetLength(HookEntries, 3);
   pGetSaveFileNameA := LPGETSAVEFILENAMEA(GetProcAddress(hCOMDLG32DLL,
     'GetSaveFileNameA'));
   with HookEntries[0] do
@@ -193,8 +213,17 @@ begin
     OriginalProc := pGetSaveFileNameA;
     HookProc := @MyGetSaveFileNameA;
   end;
-  pMessageBoxA := LPMESSAGEBOXA(GetProcAddress(hUSER32, 'MessageBoxA'));
+  pPlaySoundA := LPPLAYSOUNDA(GetProcAddress(hWINMMDLL,
+    'PlaySoundA'));
   with HookEntries[1] do
+  begin
+    ProcName := 'PlaySoundA';
+    Module := hWINMMDLL;
+    OriginalProc := pPlaySoundA;
+    HookProc := @MyPlaySoundA;
+  end;
+  pMessageBoxA := LPMESSAGEBOXA(GetProcAddress(hUSER32, 'MessageBoxA'));
+  with HookEntries[2] do
   begin
     ProcName := 'MessageBoxA';
     Module := hUSER32;
@@ -203,6 +232,7 @@ begin
   end;
 
   SuppressGSFN := False;
+  SuppressPlaySound := False;
   SuppressMSGBOX := False;
   Hook(GetModuleHandle(nil), True);
 end;
@@ -211,6 +241,7 @@ procedure FreeHook();
 begin
   Hook(GetModuleHandle(nil), False);
   FreeLibrary(hCOMDLG32DLL);
+  FreeLibrary(hWINMMDLL);
 end;
 
 end.
