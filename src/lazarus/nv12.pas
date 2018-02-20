@@ -5,30 +5,46 @@ unit NV12;
 
 interface
 
-procedure CopyYC48(Dest, Src: Pointer; const W, H, SLine, DLine: integer);
-procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
-procedure DownScaleYC48(Dest, Src: Pointer; var W, H: integer;
-  SLine: integer; const Factor: integer);
-procedure UpScaleYC48(Dest, Src: Pointer; const OrigW, OrigH: integer;
-  const DLine: integer; const Factor: integer);
-function EncodeYC48ToNV12(const Dest, Src: Pointer; const W, H: integer;
-  const SLine: integer): integer;
-procedure DecodeNV12ToYC48(const Dest, Src: Pointer; const W, H: integer;
-  const DLine: integer);
+uses
+  Parallel;
+
+procedure CopyYC48(const Parallel: TParallel; Dest, Src: Pointer; const W, H, SLine, DLine: integer); inline;
+procedure CalcDownScaledSize(var W, H: integer; const Factor: integer); inline;
+procedure DownScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; var W, H: integer;
+  const SLine: integer; const Factor: integer); inline;
+procedure UpScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; const OrigW, OrigH: integer;
+  const DLine: integer; const Factor: integer); inline;
+function EncodeYC48ToNV12(const Parallel: TParallel; const Dest, Src: Pointer;
+  const W, H: integer; const SLine: integer): integer; inline;
+procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest, Src: Pointer; const W, H: integer;
+  const DLine: integer); inline;
 
 implementation
 
 uses
-  AviUtl;
+  Windows, AviUtl;
 
-procedure CopyYC48(Dest, Src: Pointer; const W, H, SLine, DLine: integer);
+type
+  TCopyYC48Params = record
+    S, D: PByte;
+    Width, SLine, DLine: integer;
+  end;
+  PCopyYC48Params = ^TCopyYC48Params;
+
+procedure CopyYC48ParallelInner(const Index, N: integer; const UserData: Pointer);
 var
-  X, Y, Width: integer;
-  S: PByte absolute Src;
-  D: PByte absolute Dest;
+  Params: PCopyYC48Params absolute UserData;
+  Y, Width, SLine, DLine: integer;
+  S, D: PByte;
 begin
-  Width := W * SizeOf(TPixelYC);
-  for Y := 0 to H - 1 do
+  Width := Params^.Width;
+  SLine := Params^.SLine;
+  DLine := Params^.DLine;
+  S := Params^.S;
+  D := Params^.D;
+  Inc(S, SLine * Index);
+  Inc(D, DLine * Index);
+  for Y := 0 to N - 1 do
   begin
     Move(S^, D^, Width);
     Inc(S, SLine);
@@ -36,27 +52,49 @@ begin
   end;
 end;
 
-procedure CalcDownScaledSize(var W, H: integer; const Factor: integer);
+procedure CopyYC48(const Parallel: TParallel; Dest, Src: Pointer; const W, H, SLine, DLine: integer); inline;
+var
+  Params: TCopyYC48Params;
+begin
+  Params.D := Dest;
+  Params.S := Src;
+  Params.Width := W * SizeOf(TPixelYC);
+  Params.SLine := SLine;
+  Params.DLine := DLine;
+  Parallel.Execute(@CopyYC48ParallelInner, @Params, 0, H);
+end;
+
+procedure CalcDownScaledSize(var W, H: integer; const Factor: integer); inline;
 begin
   W := (W + Factor - 1) div Factor;
   H := (H + Factor - 1) div Factor;
 end;
 
-procedure DownScaleYC48(Dest, Src: Pointer; var W, H: integer;
-  SLine: integer; const Factor: integer);
+type
+  TDownScaleYC48Params = record
+    Dest, Src: Pointer;
+    Width, SLine, Factor: integer;
+  end;
+  PDownScaleYC48Params = ^TDownScaleYC48Params;
+
+procedure DownScaleYC48Inner(const Index, N: integer; const UserData: Pointer);
 var
-  X, Y: integer;
-  S: PPixelYC;
-  D: PPixelYC absolute Dest;
+  Params: PDownScaleYC48Params absolute UserData;
+  X, Y, Width, SLine, Factor: integer;
+  Src: Pointer;
+  S, D: PPixelYC;
 begin
-  W := (W + Factor - 1) div Factor;
-  H := (H + Factor - 1) div Factor;
-  SLine := SLine * Factor;
-  D := Dest;
-  for Y := 0 to H - 1 do
+  Factor := Params^.Factor;
+  SLine := Params^.SLine;
+  Width := Params^.Width;
+  Src := Params^.Src;
+  D := Params^.Dest;
+  Inc(Src, Index * SLine);
+  Inc(D, Index * Width);
+  for Y := 0 to N - 1 do
   begin
     S := PPixelYC(Src);
-    for X := 0 to W - 1 do
+    for X := 0 to Width - 1 do
     begin
       D^ := S^;
       Inc(D);
@@ -66,20 +104,51 @@ begin
   end;
 end;
 
-procedure UpScaleYC48(Dest, Src: Pointer; const OrigW, OrigH: integer;
-  const DLine: integer; const Factor: integer);
+procedure DownScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; var W, H: integer;
+  const SLine: integer; const Factor: integer); inline;
 var
-  SW, SH, FW, FH, X, Y, I, OrigLine: integer;
-  Pix: TPixelYC;
-  S: PPixelYC absolute Src;
-  D: PPixelYC;
+  Params: TDownScaleYC48Params;
 begin
+  CalcDownScaledSize(W, H, Factor);
+  Params.Dest := Dest;
+  Params.Src := Src;
+  Params.Factor:= Factor;
+  Params.SLine := SLine * Factor;
+  Params.Width := W;
+  // Parallelization overhead is too big, currently disabled.
+  DownScaleYC48Inner(0, H, @Params);
+  // Parallel.Execute(@DownScaleYC48Inner, @Params, 0, H);
+end;
+
+type
+  TUpScaleYC48Params = record
+    Dest, Src: Pointer;
+    OrigW, OrigH: integer;
+    DLine, Factor: integer
+  end;
+  PUpScaleYC48Params = ^TUpScaleYC48Params;
+
+procedure UpScaleYC48Inner(const Index, N: integer; const UserData: Pointer);
+var
+  Params: PUpScaleYC48Params absolute UserData;
+  SW, SH, FW, FH, X, Y, I, OrigW, OrigLine, DLine, Factor: integer;
+  Pix: TPixelYC;
+  S, D: PPixelYC;
+  Dest: Pointer;
+begin
+  Factor := Params^.Factor;
+  OrigW := Params^.OrigW;
   FW := OrigW div Factor;
-  FH := OrigH div Factor;
+  FH := Params^.OrigH div Factor;
   SW := (OrigW + Factor - 1) div Factor;
-  SH := (OrigH + Factor - 1) div Factor;
+  SH := (Params^.OrigH + Factor - 1) div Factor;
   OrigLine := OrigW * SizeOf(TPixelYC);
-  for Y := 0 to FH - 1 do
+  DLine := Params^.DLine;
+  S := Params^.Src;
+  Dest := Params^.Dest;
+  Inc(S, Index * SW);
+  Inc(Dest, Index * DLine * Factor);
+  for Y := 0 to N - 1 do
   begin
     D := PPixelYC(Dest);
     for X := 0 to FW - 1 do
@@ -108,7 +177,7 @@ begin
     end;
     Inc(Dest, DLine * Factor);
   end;
-  if SH <> FH then
+  if (Index + N = FH)and(SH <> FH) then
   begin
     D := PPixelYC(Dest);
     for X := 0 to FW - 1 do
@@ -131,12 +200,26 @@ begin
       end;
       Inc(S);
     end;
-    for Y := FH * Factor to OrigH - 1 do
+    for Y := FH * Factor to Params^.OrigH - 1 do
     begin
       Move(Dest^, (Dest + DLine)^, OrigLine);
       Inc(Dest, DLine);
     end;
   end;
+end;
+
+procedure UpScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; const OrigW, OrigH: integer;
+  const DLine: integer; const Factor: integer); inline;
+var
+  Params: TUpScaleYC48Params;
+begin
+  Params.Dest := Dest;
+  Params.Src := Src;
+  Params.Factor:= Factor;
+  Params.OrigW := OrigW;
+  Params.OrigH := OrigH;
+  Params.DLine := DLine;
+  Parallel.Execute(@UpScaleYC48Inner, @Params, 0, OrigH div Factor);
 end;
 
 // Reference: https://makiuchi-d.github.io/mksoft/doc/aviutlyc.html
@@ -147,24 +230,33 @@ type
   end;
   PUV = ^TUV;
 
-function EncodeYC48ToNV12(const Dest: Pointer; const Src: Pointer;
-  const W, H: integer; const SLine: integer): integer;
+  TEncodeYC48ToNV12Params = record
+    Dest, Src: Pointer;
+    W, H: integer;
+    SLine: integer;
+  end;
+  PEncodeYC48ToNV12Params = ^TEncodeYC48ToNV12Params;
+
+procedure EncodeYC48ToNV12Inner(const Index, N: integer; const UserData: Pointer);
 var
-  DLine, X, Y, YWB, YHB, UVW, UVH: integer;
+  Params: PEncodeYC48ToNV12Params absolute UserData;
+  SLine, DLine, X, Y, YWB, YHB, UVW, UVH: integer;
   S1, S2: PPixelYC;
   S, DY1, DY2: PByte;
   DUV: PUV;
 begin
-  YWB := W div 2;
-  YHB := H div 2;
-  UVW := (W + 2 - 1) div 2;
-  UVH := (H + 2 - 1) div 2;
-  S := Src;
-  DLine := W;
-  DY1 := Dest;
+  YWB := Params^.W div 2;
+  YHB := Params^.H div 2;
+  UVW := (Params^.W + 2 - 1) div 2;
+  UVH := (Params^.H + 2 - 1) div 2;
+  SLine := Params^.SLine;
+  S := Params^.Src + Index * SLine * 2;
+  DLine := Params^.W;
+  DY1 := Params^.Dest + Index * DLine * 2;
   DY2 := DY1 + DLine;
-  DUV := PUV(DY1 + W * H);
-  for Y := 0 to YHB - 1 do
+  DUV := PUV(Params^.Dest + Params^.W * Params^.H) + Index * UVW;
+
+  for Y := 0 to N - 1 do
   begin
     S1 := PPixelYC(S);
     S2 := PPixelYC(S + SLine);
@@ -201,7 +293,7 @@ begin
     Inc(DY1, DLine);
     Inc(DY2, DLine);
   end;
-  if YHB <> UVH then
+  if (Index + N = YHB)and(YHB <> UVH) then
   begin
     S1 := PPixelYC(S);
     //for Y := YHB * 2 to H - 1 do
@@ -231,28 +323,50 @@ begin
     //Inc(S, SLine);
     //end;
   end;
-  Result := W * H + UVW * UVH * SizeOf(TUV);
 end;
 
-procedure DecodeNV12ToYC48(const Dest: Pointer; const Src: Pointer;
-  const W, H: integer; const DLine: integer);
+function EncodeYC48ToNV12(const Parallel: TParallel; const Dest: Pointer;
+  const Src: Pointer; const W, H: integer; const SLine: integer): integer; inline;
 var
-  SLine, X, Y, Cb, Cr, YWB, YHB, UVW, UVH: integer;
+  Params: TEncodeYC48ToNV12Params;
+begin
+  Params.Dest := Dest;
+  Params.Src := Src;
+  Params.W := W;
+  Params.H := H;
+  Params.SLine := SLine;
+  Parallel.Execute(@EncodeYC48ToNV12Inner, @Params, 0, H div 2);
+  Result := W * H + ((W + 2 - 1) div 2) * ((H + 2 - 1) div 2) * SizeOf(TUV);
+end;
+
+type
+  TDecodeNV12ToYC48Params = record
+    Dest, Src: Pointer;
+    W, H: integer;
+    DLine: integer;
+  end;
+  PDecodeNV12ToYC48Params = ^TDecodeNV12ToYC48Params;
+
+procedure DecodeNV12ToYC48Inner(const Index, N: integer; const UserData: Pointer);
+var
+  Params: PDecodeNV12ToYC48Params absolute UserData;
+  DLine, SLine, X, Y, Cb, Cr, YWB, YHB, UVW, UVH: integer;
   D1, D2: PPixelYC;
   D, SY1, SY2: PByte;
   SUV: PUV;
 begin
-  YWB := W div 2;
-  YHB := H div 2;
-  UVW := (W + 2 - 1) div 2;
-  UVH := (H + 2 - 1) div 2;
+  YWB := Params^.W div 2;
+  YHB := Params^.H div 2;
+  UVW := (Params^.W + 2 - 1) div 2;
+  UVH := (Params^.H + 2 - 1) div 2;
 
-  D := Dest;
-  SLine := W;
-  SY1 := Src;
+  DLine := Params^.DLine;
+  D := Params^.Dest + Index * DLine * 2;
+  SLine := Params^.W;
+  SY1 := Params^.Src + Index * SLine * 2;
   SY2 := SY1 + SLine;
-  SUV := PUV(SY1 + W * H);
-  for Y := 0 to YHB - 1 do
+  SUV := PUV(Params^.Src + Params^.W * Params^.H) + Index * UVW;
+  for Y := 0 to N - 1 do
   begin
     D1 := PPixelYC(D);
     D2 := PPixelYC(D + DLine);
@@ -302,7 +416,7 @@ begin
     Inc(SY1, SLine);
     Inc(SY2, SLine);
   end;
-  if YHB <> UVH then
+  if (Index + N = YHB)and(YHB <> UVH) then
   begin
     D1 := PPixelYC(D);
     //for Y := YHB * 2 to H - 1 do
@@ -339,6 +453,20 @@ begin
     //Inc(D, DLine);
     //end;
   end;
+end;
+
+
+procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest: Pointer; const Src: Pointer;
+  const W, H: integer; const DLine: integer); inline;
+var
+  Params: TDecodeNV12ToYC48Params;
+begin
+  Params.Dest := Dest;
+  Params.Src := Src;
+  Params.W := W;
+  Params.H := H;
+  Params.DLine := DLine;
+  Parallel.Execute(@DecodeNV12ToYC48Inner, @Params, 0, H div 2);
 end;
 
 end.

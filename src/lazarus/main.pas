@@ -6,7 +6,7 @@ unit Main;
 interface
 
 uses
-  Windows, SysUtils, Classes, Process, Remote, AviUtl, Encoder, StorageAPI;
+  Windows, SysUtils, Classes, Process, Remote, AviUtl, Encoder, Parallel, StorageAPI;
 
 type
   { TRamPreview }
@@ -16,6 +16,7 @@ type
     FRemoteProcess: TProcess;
     FReceiver: TReceiver;
     FVideoEncoder, FAudioEncoder: TEncoder;
+    FParallel: TParallel;
     FCS, FFMOCS: TRTLCriticalSection;
 
     FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
@@ -36,6 +37,14 @@ type
     FErrorMessage: WideString;
 
     FStartFrame, FEndFrame, FCurrentFrame: integer;
+    {$IFDEF BENCH_ENCODE}
+    FTransferTime, FCompressTime, FVideoPushTime, FAudioPushTime: single;
+    {$ENDIF}
+
+    {$IFDEF BENCH_UPSCALE}
+    FUpScaleTime: single;
+    FUpScaleCount: integer;
+    {$ENDIF}
 
     function GetResolution: integer;
     procedure PrepareIPC();
@@ -57,7 +66,8 @@ type
 
     procedure EncodeVideo(const UserData, Buffer, TempBuffer: Pointer);
     procedure EncodeAudio(const UserData, Buffer, TempBuffer: Pointer);
-    procedure PutVideo(const Buffer: Pointer; const Frame, Width, Height, Mode, Len: integer);
+    procedure PutVideo(const Buffer: Pointer;
+      const Frame, Width, Height, Mode, Len: integer);
     procedure PutAudio(const Buffer: Pointer; const Frame, Samples, Channels: integer);
 
     procedure CaptureRange(Edit: Pointer; Filter: PFilter);
@@ -259,7 +269,8 @@ begin
     NextSamplePos := (Sec * OI^.AudioRate) div OI^.Rate;
     OI^.GetVideoEx(I, FOURCC_YC48);
     OI^.GetAudio(SamplePos, NextSamplePos - SamplePos, @Read);
-    OI^.UpdatePreview();
+    if (I and 15) = 0 then
+      OI^.UpdatePreview();
   end;
   RamPreview.FCapturing := False;
   Result := AVIUTL_TRUE;
@@ -477,6 +488,7 @@ type
     Frame, Width, Height, Mode: integer;
   end;
   PVideoFrame = ^TVideoFrame;
+
   TAudioFrame = record
     Frame, Samples, Channels: integer;
   end;
@@ -487,6 +499,7 @@ var
   S: string;
   X, Y, Len: integer;
   VideoFrame: TVideoFrame;
+  Freq, Start, Finish: int64;
 begin
   Result := True;
   try
@@ -496,14 +509,27 @@ begin
       VideoFrame.Width := fpip^.X;
       VideoFrame.Height := fpip^.Y;
       VideoFrame.Mode := Resolution;
-      FVideoEncoder.WaitPush();
-      CopyYC48(FVideoEncoder.Buffer, fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize, fpip^.X * SizeOf(TPixelYC));
-      FVideoEncoder.Push(@VideoFrame, SizeOf(TVideoFrame));
 
-      fpip^.X := 16;
-      fpip^.Y := 16;
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceFrequency(Freq);
+      QueryPerformanceCounter(Start);
+      {$ENDIF}
+      FVideoEncoder.WaitPush();
+      CopyYC48(FParallel, FVideoEncoder.Buffer, fpip^.YCPEdit, fpip^.X, fpip^.Y,
+        fpip^.LineSize, fpip^.X * SizeOf(TPixelYC));
+      FVideoEncoder.Push(@VideoFrame, SizeOf(TVideoFrame));
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceCounter(Finish);
+      FVideoPushTime := FVideoPushTime + (Finish - Start) * 1000 / Freq;
+      {$ENDIF}
 
       FCurrentFrame := fpip^.Frame;
+      if (FStartFrame - FCurrentFrame) and 15 <> 0 then
+      begin
+        fpip^.X := 4;
+        fpip^.Y := 4;
+      end;
+
       if GetTickCount() > FCacheSizeUpdatedAt + 500 then
       begin
         FCacheSizeUpdatedAt := GetTickCount();
@@ -524,12 +550,13 @@ begin
         case FMappedViewHeader^.C of
           0:
           begin // Full
-            CopyYC48(fpip^.YCPEdit, FMappedViewData, fpip^.X, fpip^.Y,
+            CopyYC48(FParallel, fpip^.YCPEdit, FMappedViewData, fpip^.X, fpip^.Y,
               fpip^.X * fpip^.YCSize, fpip^.LineSize);
           end;
           1:
           begin // 1/4
-            DecodeNV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A,
+            DecodeNV12ToYC48(FParallel, fpip^.YCPEdit, FMappedViewData,
+              FMappedViewHeader^.A,
               FMappedViewHeader^.B, fpip^.LineSize);
           end;
           2, 3:
@@ -537,9 +564,22 @@ begin
             X := FMappedViewHeader^.A;
             Y := FMappedViewHeader^.B;
             CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.C]);
-            DecodeNV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
-            UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A,
+            DecodeNV12ToYC48(FParallel, fpip^.YCPTemp, FMappedViewData,
+              X, Y, X * SizeOf(TPixelYC));
+            {$IFDEF BENCH_UPSCALE}
+            QueryPerformanceFrequency(Freq);
+            QueryPerformanceCounter(Start);
+            {$ENDIF}
+            UpScaleYC48(FParallel, fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A,
               FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.C]);
+            {$IFDEF BENCH_UPSCALE}
+            QueryPerformanceCounter(Finish);
+            FUpScaleTime := FUpScaleTime + (Finish - Start) * 1000 / Freq;
+            Inc(FUpScaleCount);
+            if (FUpScaleCount and 31) = 0 then
+              OutputDebugString(PChar(Format('UpScaleTime: Avg %0.3fms',
+                [FUpScaleTime / FUpScaleCount])));
+            {$ENDIF}
           end;
         end;
       end
@@ -574,6 +614,7 @@ function TRamPreview.FilterAudioProc(fp: PFilter; fpip: PFilterProcInfo): boolea
 var
   Len: integer;
   AudioFrame: TAudioFrame;
+  Freq, Start, Finish: int64;
 begin
   Result := True;
   try
@@ -584,10 +625,18 @@ begin
       AudioFrame.Frame := fpip^.Frame;
       AudioFrame.Samples := fpip^.AudioN;
       AudioFrame.Channels := fpip^.AudioCh;
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceFrequency(Freq);
+      QueryPerformanceCounter(Start);
+      {$ENDIF}
       FAudioEncoder.WaitPush();
-      Move(fpip^.AudioP^, FAudioEncoder.Buffer^, fpip^.AudioN * SizeOf(smallint) * fpip^.AudioCh);
+      Move(fpip^.AudioP^, FAudioEncoder.Buffer^, fpip^.AudioN *
+        SizeOf(smallint) * fpip^.AudioCh);
       FAudioEncoder.Push(@AudioFrame, SizeOf(TAudioFrame));
-      //PutAudio(fpip^.AudioP, fpip^.Frame, fpip^.AudioN, fpip^.AudioCh);
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceCounter(Finish);
+      FAudioPushTime := FAudioPushTime + (Finish - Start) * 1000 / Freq;
+      {$ENDIF}
       Exit;
     end;
     if not FPlaying then
@@ -679,6 +728,8 @@ var
 begin
   Result := True;
   try
+    FParallel := TParallel.Create(TThread.ProcessorCount);
+
     if Filter^.ExFunc^.GetSysInfo(nil, @SI) = AVIUTL_FALSE then
       raise Exception.Create('AviUtl のシステム情報取得に失敗しました');
 
@@ -722,6 +773,7 @@ begin
       CloseHandle(FMappedFile);
       FMappedFile := 0;
     end;
+    FreeAndNil(FParallel);
   except
     on E: Exception do
       MessageBoxW(Filter^.Hwnd,
@@ -987,23 +1039,43 @@ procedure TRamPreview.EncodeVideo(const UserData, Buffer, TempBuffer: Pointer);
 var
   UD: PVideoFrame absolute UserData;
   W, H, Len: integer;
+  Freq, Start, Finish: int64;
 begin
   case UD^.Mode of
     0:
     begin // Full
-      PutVideo(TempBuffer, UD^.Frame, UD^.Width, UD^.Height, UD^.Mode, UD^.Width * SizeOf(TPixelYC) * UD^.Height);
+      PutVideo(Buffer, UD^.Frame, UD^.Width, UD^.Height, UD^.Mode,
+        UD^.Width * SizeOf(TPixelYC) * UD^.Height);
     end;
     1:
     begin // 1/4
-      Len := EncodeYC48ToNV12(TempBuffer, Buffer, UD^.Width, UD^.Height, UD^.Width * SizeOf(TPixelYC));
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceFrequency(Freq);
+      QueryPerformanceCounter(Start);
+      {$ENDIF}
+      Len := EncodeYC48ToNV12(FParallel, TempBuffer, Buffer, UD^.Width,
+        UD^.Height, UD^.Width * SizeOf(TPixelYC));
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceCounter(Finish);
+      FCompressTime := FCompressTime + (Finish - Start) * 1000 / Freq;
+      {$ENDIF}
       PutVideo(TempBuffer, UD^.Frame, UD^.Width, UD^.Height, UD^.Mode, Len);
     end;
     2, 3:
     begin // 1/16, 1/64
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceFrequency(Freq);
+      QueryPerformanceCounter(Start);
+      {$ENDIF}
       W := UD^.Width;
       H := UD^.Height;
-      DownScaleYC48(TempBuffer, Buffer, W, H, UD^.Width * SizeOf(TPixelYC), ScaleMap[UD^.Mode]);
-      Len := EncodeYC48ToNV12(Buffer, TempBuffer, W, H, W * SizeOf(TPixelYC));
+      DownScaleYC48(FParallel, TempBuffer, Buffer, W, H, UD^.Width * SizeOf(TPixelYC),
+        ScaleMap[UD^.Mode]);
+      Len := EncodeYC48ToNV12(FParallel, Buffer, TempBuffer, W, H, W * SizeOf(TPixelYC));
+      {$IFDEF BENCH_ENCODE}
+      QueryPerformanceCounter(Finish);
+      FCompressTime := FCompressTime + (Finish - Start) * 1000 / Freq;
+      {$ENDIF}
       PutVideo(Buffer, UD^.Frame, UD^.Width, UD^.Height, UD^.Mode, Len);
     end;
   end;
@@ -1016,9 +1088,15 @@ begin
   PutAudio(Buffer, UD^.Frame, UD^.Samples, UD^.Channels);
 end;
 
-procedure TRamPreview.PutVideo(const Buffer: Pointer; const Frame, Width,
-  Height, Mode, Len: integer);
+procedure TRamPreview.PutVideo(const Buffer: Pointer;
+  const Frame, Width, Height, Mode, Len: integer);
+var
+  Freq, Start, Finish: int64;
 begin
+  {$IFDEF BENCH_ENCODE}
+  QueryPerformanceFrequency(Freq);
+  QueryPerformanceCounter(Start);
+  {$ENDIF}
   EnterCriticalSection(FFMOCS);
   try
     FMappedViewHeader^.A := Width;
@@ -1029,10 +1107,14 @@ begin
   finally
     LeaveCriticalSection(FFMOCS);
   end;
+  {$IFDEF BENCH_ENCODE}
+  QueryPerformanceCounter(Finish);
+  FTransferTime := FTransferTime + (Finish - Start) * 1000 / Freq;
+  {$ENDIF}
 end;
 
-procedure TRamPreview.PutAudio(const Buffer: Pointer; const Frame, Samples,
-  Channels: integer);
+procedure TRamPreview.PutAudio(const Buffer: Pointer;
+  const Frame, Samples, Channels: integer);
 var
   Len: integer;
 begin
@@ -1093,7 +1175,7 @@ procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
   FI: TFileInfo;
   SI: TSysInfo;
-  SelectedFrameRateChangerID: integer;
+  SelectedFrameRateChangerID, Frames: integer;
   Freq, Start, Finish: int64;
 begin
   if Filter^.ExFunc^.GetSysInfo(nil, @SI) = AVIUTL_FALSE then
@@ -1111,13 +1193,21 @@ begin
   SelectedFrameRateChangerID := SetFrameRateChangerToNone(FMainWindow);
   try
     FErrorMessage := '';
+{$IFDEF BENCH_ENCODE}
+    FTransferTime := 0;
+    FCompressTime := 0;
+    FVideoPushTime := 0;
+    FAudioPushTime := 0;
+{$ENDIF}
     Playing := False;
     FCapturing := True;
     DisableGetSaveFileName(True);
     DisablePlaySound(True);
 
-    FVideoEncoder := TEncoder.Create(Max(SI.MaxW, 1280) * Max(SI.MaxH, 720) * SizeOf(TPixelYC), True);
-    FAudioEncoder := TEncoder.Create(FI.AudioRate * SizeOf(SmallInt) * FI.AudioCh, False);
+    FVideoEncoder := TEncoder.Create(Max(SI.MaxW, 1280) * Max(SI.MaxH, 720) *
+      SizeOf(TPixelYC), True);
+    FAudioEncoder := TEncoder.Create(FI.AudioRate * SizeOf(smallint) *
+      FI.AudioCh, False);
     try
       FVideoEncoder.OnEncode := @EncodeVideo;
       FAudioEncoder.OnEncode := @EncodeAudio;
@@ -1128,7 +1218,13 @@ begin
       Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
 
       QueryPerformanceCounter(Finish);
-      OutputDebugString(PChar(Format('Time: %0.3fms', [(Finish - Start) * 1000 / Freq])));
+      Frames := FEndFrame - FStartFrame + 1;
+      {$IFDEF BENCH_ENCODE}
+      OutputDebugString(PChar(Format(
+        'TotalTime: %0.3fms / Compress: Avg %0.3fms / Transfer: Avg %0.3fms / VideoPushTime: Avg %0.3fms / AudioPushTime: Avg %0.3fms',
+        [(Finish - Start) * 1000 / Freq, FCompressTime / Frames,
+        FTransferTime / Frames, FVideoPushTime / Frames, FAudioPushTime / Frames])));
+      {$ENDIF}
     finally
       FVideoEncoder.Terminate;
       FVideoEncoder.Push(nil, 0);
@@ -1151,10 +1247,13 @@ begin
 
     SendMessage(FMainWindow, WM_COMMAND, LOWORD(SelectedFrameRateChangerID), 0);
 
-    if FErrorMessage = '' then begin
+    if FErrorMessage = '' then
+    begin
       Playing := True;
       Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
-    end else begin
+    end
+    else
+    begin
       MessageBoxW(FWindow, PWideChar(
         'キャッシュデータの作成中にエラーが発生しました。'#13#10#13#10 + FErrorMessage),
         PluginName, MB_ICONERROR);

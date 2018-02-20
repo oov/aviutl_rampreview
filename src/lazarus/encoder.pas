@@ -71,7 +71,6 @@ end;
 
 constructor TEncoder.Create(const BufferSize: integer; const AllocTempBuffer: boolean);
 begin
-  inherited Create(False);
   FQueued := RTLEventCreate();
   FDone := RTLEventCreate();
   FBuffer := GetMem(BufferSize);
@@ -81,6 +80,7 @@ begin
   else
     FTempBuffer := nil;
   RTLEventSetEvent(FDone);
+  inherited Create(False);
 end;
 
 destructor TEncoder.Destroy();

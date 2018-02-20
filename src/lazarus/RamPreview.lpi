@@ -37,7 +37,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="9">
+    <Units Count="10">
       <Unit0>
         <Filename Value="RamPreview.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -82,6 +82,11 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="Encoder"/>
       </Unit8>
+      <Unit9>
+        <Filename Value="parallel.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Parallel"/>
+      </Unit9>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
