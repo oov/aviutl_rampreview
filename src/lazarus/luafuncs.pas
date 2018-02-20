@@ -74,9 +74,13 @@ function LuaPut(L: Plua_State): integer; cdecl;
 
       if SrcLen > Extram.API^.ViewLen then
         raise Exception.Create('data is too large');
-      Move(Data^, Extram.API^.View^, SrcLen);
-      if Extram.API^.Put(Key, SrcLen) = 0 then
-        Exception.Create('failed to put');
+      Extram.API^.PutStart();
+      try
+        Move(Data^, Extram.API^.View^, SrcLen);
+      finally
+        if Extram.API^.Put(Key, SrcLen) = 0 then
+          Exception.Create('failed to put');
+      end;
       Result := 0;
     except
       on E: Exception do
@@ -128,19 +132,27 @@ function LuaGet(L: Plua_State): integer; cdecl;
         Data := lua_topointer(L, 2);
         DestLen := lua_tointeger(L, 3);
         SrcLen := Extram.API^.Get(Key);
-        if SrcLen <= 0 then
-          raise Exception.Create('data not found');
-        if DestLen < SrcLen then
-          raise Exception.Create('buffer is too small');
-        Move(Extram.API^.View^, Data^, SrcLen);
+        try
+          if SrcLen <= 0 then
+            raise Exception.Create('data not found');
+          if DestLen < SrcLen then
+            raise Exception.Create('buffer is too small');
+          Move(Extram.API^.View^, Data^, SrcLen);
+        finally
+          Extram.API^.GetFinish();
+        end;
         lua_pushinteger(L, SrcLen);
         Result := 1;
       end
       else begin
         SrcLen := Extram.API^.Get(Key);
-        if SrcLen <= 0 then
-          raise Exception.Create('data not found');
-        lua_pushlstring(L, Extram.API^.View, SrcLen);
+        try
+          if SrcLen <= 0 then
+            raise Exception.Create('data not found');
+          lua_pushlstring(L, Extram.API^.View, SrcLen);
+        finally
+          Extram.API^.GetFinish();
+        end;
         Result := 1;
       end;
     except

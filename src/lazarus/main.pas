@@ -15,7 +15,7 @@ type
   private
     FRemoteProcess: TProcess;
     FReceiver: TReceiver;
-    FCS: TRTLCriticalSection;
+    FCS, FFMOCS: TRTLCriticalSection;
 
     FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
     FMainWindow: THandle;
@@ -131,18 +131,33 @@ end;
 
 function StorageGet(Key: PChar): integer; cdecl;
 begin
+  EnterCriticalSection(RamPreview.FFMOCS);
   Result := RamPreview.GetS(Key) - SizeOf(TViewHeader);
+end;
+
+procedure StorageGetFinish(); cdecl;
+begin
+  LeaveCriticalSection(RamPreview.FFMOCS);
+end;
+
+procedure StoragePutStart(); cdecl;
+begin
+  EnterCriticalSection(RamPreview.FFMOCS);
 end;
 
 function StoragePut(Key: PChar; Len: integer): integer; cdecl;
 begin
-  if Len > Storage.ViewLen then
-  begin
-    Result := 0;
-    Exit;
+  try
+    if Len > Storage.ViewLen then
+    begin
+      Result := 0;
+      Exit;
+    end;
+    RamPreview.PutS(Key, Len + SizeOf(TViewHeader));
+    Result := Len;
+  finally
+    LeaveCriticalSection(RamPreview.FFMOCS);
   end;
-  RamPreview.PutS(Key, Len + SizeOf(TViewHeader));
-  Result := Len;
 end;
 
 procedure StorageDel(Key: PChar); cdecl;
@@ -461,31 +476,36 @@ begin
   try
     if FCapturing then
     begin
-      FMappedViewHeader^.A := fpip^.X;
-      FMappedViewHeader^.B := fpip^.Y;
-      FMappedViewHeader^.C := fpip^.YCSize;
-      FMappedViewHeader^.D := Resolution;
-      case FMappedViewHeader^.D of
-        0:
-        begin // Full
-          CopyYC48(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y,
-            fpip^.LineSize, fpip^.X * fpip^.YCSize);
-          Put(fpip^.Frame + 1, fpip^.X * fpip^.YCSize * fpip^.Y + SizeOf(TViewHeader));
+      EnterCriticalSection(FFMOCS);
+      try
+        FMappedViewHeader^.A := fpip^.X;
+        FMappedViewHeader^.B := fpip^.Y;
+        FMappedViewHeader^.C := fpip^.YCSize;
+        FMappedViewHeader^.D := Resolution;
+        case FMappedViewHeader^.D of
+          0:
+          begin // Full
+            CopyYC48(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y,
+              fpip^.LineSize, fpip^.X * fpip^.YCSize);
+            Put(fpip^.Frame + 1, fpip^.X * fpip^.YCSize * fpip^.Y + SizeOf(TViewHeader));
+          end;
+          1:
+          begin // 1/4
+            Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
+              fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
+          end;
+          2, 3:
+          begin // 1/16, 1/64
+            X := fpip^.X;
+            Y := fpip^.Y;
+            DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize,
+              ScaleMap[FMappedViewHeader^.D]);
+            Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
+              fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
+          end;
         end;
-        1:
-        begin // 1/4
-          Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
-            fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
-        end;
-        2, 3:
-        begin // 1/16, 1/64
-          X := fpip^.X;
-          Y := fpip^.Y;
-          DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize,
-            ScaleMap[FMappedViewHeader^.D]);
-          Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
-            fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
-        end;
+      finally
+        LeaveCriticalSection(FFMOCS);
       end;
 
       FCurrentFrame := fpip^.Frame;
@@ -499,39 +519,44 @@ begin
     end;
     if not FPlaying then
       Exit;
-    Len := Get(fpip^.Frame + 1);
-    if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
-    begin
-      fpip^.X := FMappedViewHeader^.A;
-      fpip^.Y := FMappedViewHeader^.B;
-      case FMappedViewHeader^.D of
-        0:
-        begin // Full
-          CopyYC48(fpip^.YCPEdit, FMappedViewData, fpip^.X, fpip^.Y,
-            fpip^.X * fpip^.YCSize, fpip^.LineSize);
+    EnterCriticalSection(FFMOCS);
+    try
+      Len := Get(fpip^.Frame + 1);
+      if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
+      begin
+        fpip^.X := FMappedViewHeader^.A;
+        fpip^.Y := FMappedViewHeader^.B;
+        case FMappedViewHeader^.D of
+          0:
+          begin // Full
+            CopyYC48(fpip^.YCPEdit, FMappedViewData, fpip^.X, fpip^.Y,
+              fpip^.X * fpip^.YCSize, fpip^.LineSize);
+          end;
+          1:
+          begin // 1/4
+            DecodeNV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A,
+              FMappedViewHeader^.B, fpip^.LineSize);
+          end;
+          2, 3:
+          begin // 1/16, 1/64
+            X := FMappedViewHeader^.A;
+            Y := FMappedViewHeader^.B;
+            CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.D]);
+            DecodeNV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
+            UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A,
+              FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
+          end;
         end;
-        1:
-        begin // 1/4
-          DecodeNV12ToYC48(fpip^.YCPEdit, FMappedViewData, FMappedViewHeader^.A,
-            FMappedViewHeader^.B, fpip^.LineSize);
-        end;
-        2, 3:
-        begin // 1/16, 1/64
-          X := FMappedViewHeader^.A;
-          Y := FMappedViewHeader^.B;
-          CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.D]);
-          DecodeNV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
-          UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A,
-            FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
-        end;
+      end
+      else
+      begin
+        FillChar(fpip^.YCPEdit^, fpip^.LineSize * fpip^.Y, 0);
+        S := Format('Frame %d: no cache', [fpip^.Frame]);
+        fp^.ExFunc^.DrawText(fpip^.YCPEdit, 0, 0, PChar(S), 255, 255,
+          255, 0, 0, nil, nil);
       end;
-    end
-    else
-    begin
-      FillChar(fpip^.YCPEdit^, fpip^.LineSize * fpip^.Y, 0);
-      S := Format('Frame %d: no cache', [fpip^.Frame]);
-      fp^.ExFunc^.DrawText(fpip^.YCPEdit, 0, 0, PChar(S), 255, 255,
-        255, 0, 0, nil, nil);
+    finally
+      LeaveCriticalSection(FFMOCS);
     end;
   except
     on E: Exception do
@@ -558,23 +583,34 @@ begin
   try
     if FCapturing then
     begin
-      if (FStartFrame > fpip^.Frame)or(fpip^.Frame > FEndFrame) then Exit;
-      Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
-      FMappedViewHeader^.A := fpip^.AudioN;
-      FMappedViewHeader^.B := fpip^.AudioCh;
-      Move(fpip^.AudioP^, FMappedViewData^, Len);
-      Put(-fpip^.Frame - 1, Len + SizeOf(TViewHeader));
+      if (FStartFrame > fpip^.Frame) or (fpip^.Frame > FEndFrame) then
+        Exit;
+      EnterCriticalSection(FFMOCS);
+      try
+        Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
+        FMappedViewHeader^.A := fpip^.AudioN;
+        FMappedViewHeader^.B := fpip^.AudioCh;
+        Move(fpip^.AudioP^, FMappedViewData^, Len);
+        Put(-fpip^.Frame - 1, Len + SizeOf(TViewHeader));
+      finally
+        LeaveCriticalSection(FFMOCS);
+      end;
       Exit;
     end;
     if not FPlaying then
       Exit;
-    Len := Get(-fpip^.Frame - 1);
-    if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
-      (FMappedViewHeader^.B = fpip^.AudioCh) then
-      Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
-        fpip^.AudioN * SizeOf(smallint))
-    else
-      FillChar(fpip^.AudioP^, fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint), 0);
+    EnterCriticalSection(FFMOCS);
+    try
+      Len := Get(-fpip^.Frame - 1);
+      if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.A = fpip^.AudioN) and
+        (FMappedViewHeader^.B = fpip^.AudioCh) then
+        Move(FMappedViewData^, fpip^.AudioP^, fpip^.AudioCh *
+          fpip^.AudioN * SizeOf(smallint))
+      else
+        FillChar(fpip^.AudioP^, fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint), 0);
+    finally
+      LeaveCriticalSection(FFMOCS);
+    end;
   except
     on E: Exception do
     begin
@@ -716,6 +752,7 @@ var
 begin
   inherited Create;
   InitCriticalSection(FCS);
+  InitCriticalSection(FFMOCS);
   FRemoteProcess := TProcess.Create(nil);
   ws := GetDLLName();
   ws[Length(ws) - 2] := 'e';
@@ -766,6 +803,7 @@ begin
     FreeAndNil(FReceiver);
   end;
 
+  DoneCriticalSection(FFMOCS);
   DoneCriticalSection(FCS);
   inherited Destroy;
 end;
@@ -1161,6 +1199,8 @@ initialization
   OutputPluginTable.FuncOutput := @OutputFuncOutput;
 
   Storage.Get := @StorageGet;
+  Storage.GetFinish := @StorageGetFinish;
+  Storage.PutStart := @StoragePutStart;
   Storage.Put := @StoragePut;
   Storage.Del := @StorageDel;
 

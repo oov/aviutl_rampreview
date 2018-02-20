@@ -9,6 +9,7 @@ type
   TGetFunc = function(Key: PChar): integer; cdecl;
   TPutFunc = function(Key: PChar; Len: integer): integer; cdecl;
   TDelFunc = procedure(Key: PChar); cdecl;
+  TSyncFunc = procedure(); cdecl;
 
   TViewHeader = record
     A, B, C, D: integer;
@@ -20,6 +21,8 @@ type
     View: Pointer;
     ViewLen: integer;
     Get: TGetFunc;
+    GetFinish: TSyncFunc;
+    PutStart: TSyncFunc;
     Put: TPutFunc;
     Del: TDelFunc;
   end;
