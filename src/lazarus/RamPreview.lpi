@@ -37,7 +37,7 @@
         <PackageName Value="LCL"/>
       </Item1>
     </RequiredPackages>
-    <Units Count="8">
+    <Units Count="9">
       <Unit0>
         <Filename Value="RamPreview.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -77,6 +77,11 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="NV12"/>
       </Unit7>
+      <Unit8>
+        <Filename Value="encoder.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Encoder"/>
+      </Unit8>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

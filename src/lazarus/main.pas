@@ -6,7 +6,7 @@ unit Main;
 interface
 
 uses
-  Windows, SysUtils, Classes, Process, Remote, AviUtl, StorageAPI;
+  Windows, SysUtils, Classes, Process, Remote, AviUtl, Encoder, StorageAPI;
 
 type
   { TRamPreview }
@@ -15,6 +15,7 @@ type
   private
     FRemoteProcess: TProcess;
     FReceiver: TReceiver;
+    FVideoEncoder, FAudioEncoder: TEncoder;
     FCS, FFMOCS: TRTLCriticalSection;
 
     FEntry, FEntryAudio, FEntryExtram: TFilterDLL;
@@ -53,6 +54,11 @@ type
     procedure PutS(const Key: string; const Size: integer);
     function GetS(const Key: string): integer;
     function DelS(const Key: string): integer;
+
+    procedure EncodeVideo(const UserData, Buffer, TempBuffer: Pointer);
+    procedure EncodeAudio(const UserData, Buffer, TempBuffer: Pointer);
+    procedure PutVideo(const Buffer: Pointer; const Frame, Width, Height, Mode, Len: integer);
+    procedure PutAudio(const Buffer: Pointer; const Frame, Samples, Channels: integer);
 
     procedure CaptureRange(Edit: Pointer; Filter: PFilter);
     procedure ClearCache(Edit: Pointer; Filter: PFilter);
@@ -113,6 +119,7 @@ const
 const
   OutputFilter = #$8E#$E8#$93#$AE#$82#$C5#$8E#$67#$82#$A4#$82#$B1#$82#$C6#$82#$CD#$82#$C5#$82#$AB#$82#$DC#$82#$B9#$82#$F1#$00#$44#$4F#$20#$4E#$4F#$54#$20#$55#$53#$45#$20#$54#$48#$49#$53#$00#$00;
   BoolConv: array[boolean] of AviUtlBool = (AVIUTL_FALSE, AVIUTL_TRUE);
+  ScaleMap: array[0..3] of integer = (1, 1, 2, 4);
 
 var
   FilterDLLList: array of PFilterDLL;
@@ -465,48 +472,36 @@ begin
   end;
 end;
 
+type
+  TVideoFrame = record
+    Frame, Width, Height, Mode: integer;
+  end;
+  PVideoFrame = ^TVideoFrame;
+  TAudioFrame = record
+    Frame, Samples, Channels: integer;
+  end;
+  PAudioFrame = ^TAudioFrame;
+
 function TRamPreview.FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
-const
-  ScaleMap: array[0..3] of integer = (1, 1, 2, 4);
 var
   S: string;
   X, Y, Len: integer;
+  VideoFrame: TVideoFrame;
 begin
   Result := True;
   try
     if FCapturing then
     begin
-      EnterCriticalSection(FFMOCS);
-      try
-        FMappedViewHeader^.A := fpip^.X;
-        FMappedViewHeader^.B := fpip^.Y;
-        FMappedViewHeader^.C := fpip^.YCSize;
-        FMappedViewHeader^.D := Resolution;
-        case FMappedViewHeader^.D of
-          0:
-          begin // Full
-            CopyYC48(FMappedViewData, fpip^.YCPEdit, fpip^.X, fpip^.Y,
-              fpip^.LineSize, fpip^.X * fpip^.YCSize);
-            Put(fpip^.Frame + 1, fpip^.X * fpip^.YCSize * fpip^.Y + SizeOf(TViewHeader));
-          end;
-          1:
-          begin // 1/4
-            Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
-              fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize) + SizeOf(TViewHeader));
-          end;
-          2, 3:
-          begin // 1/16, 1/64
-            X := fpip^.X;
-            Y := fpip^.Y;
-            DownScaleYC48(fpip^.YCPTemp, fpip^.YCPEdit, X, Y, fpip^.LineSize,
-              ScaleMap[FMappedViewHeader^.D]);
-            Put(fpip^.Frame + 1, EncodeYC48ToNV12(FMappedViewData,
-              fpip^.YCPTemp, X, Y, X * SizeOf(TPixelYC)) + SizeOf(TViewHeader));
-          end;
-        end;
-      finally
-        LeaveCriticalSection(FFMOCS);
-      end;
+      VideoFrame.Frame := fpip^.Frame;
+      VideoFrame.Width := fpip^.X;
+      VideoFrame.Height := fpip^.Y;
+      VideoFrame.Mode := Resolution;
+      FVideoEncoder.WaitPush();
+      CopyYC48(FVideoEncoder.Buffer, fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize, fpip^.X * SizeOf(TPixelYC));
+      FVideoEncoder.Push(@VideoFrame, SizeOf(TVideoFrame));
+
+      fpip^.X := 16;
+      fpip^.Y := 16;
 
       FCurrentFrame := fpip^.Frame;
       if GetTickCount() > FCacheSizeUpdatedAt + 500 then
@@ -522,11 +517,11 @@ begin
     EnterCriticalSection(FFMOCS);
     try
       Len := Get(fpip^.Frame + 1);
-      if (Len > SizeOf(TViewHeader)) and (FMappedViewHeader^.C = fpip^.YCSize) then
+      if Len > SizeOf(TViewHeader) then
       begin
         fpip^.X := FMappedViewHeader^.A;
         fpip^.Y := FMappedViewHeader^.B;
-        case FMappedViewHeader^.D of
+        case FMappedViewHeader^.C of
           0:
           begin // Full
             CopyYC48(fpip^.YCPEdit, FMappedViewData, fpip^.X, fpip^.Y,
@@ -541,10 +536,10 @@ begin
           begin // 1/16, 1/64
             X := FMappedViewHeader^.A;
             Y := FMappedViewHeader^.B;
-            CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.D]);
+            CalcDownScaledSize(X, Y, ScaleMap[FMappedViewHeader^.C]);
             DecodeNV12ToYC48(fpip^.YCPTemp, FMappedViewData, X, Y, X * SizeOf(TPixelYC));
             UpScaleYC48(fpip^.YCPEdit, fpip^.YCPTemp, FMappedViewHeader^.A,
-              FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.D]);
+              FMappedViewHeader^.B, fpip^.LineSize, ScaleMap[FMappedViewHeader^.C]);
           end;
         end;
       end
@@ -578,6 +573,7 @@ end;
 function TRamPreview.FilterAudioProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
 var
   Len: integer;
+  AudioFrame: TAudioFrame;
 begin
   Result := True;
   try
@@ -585,16 +581,13 @@ begin
     begin
       if (FStartFrame > fpip^.Frame) or (fpip^.Frame > FEndFrame) then
         Exit;
-      EnterCriticalSection(FFMOCS);
-      try
-        Len := fpip^.AudioCh * fpip^.AudioN * SizeOf(smallint);
-        FMappedViewHeader^.A := fpip^.AudioN;
-        FMappedViewHeader^.B := fpip^.AudioCh;
-        Move(fpip^.AudioP^, FMappedViewData^, Len);
-        Put(-fpip^.Frame - 1, Len + SizeOf(TViewHeader));
-      finally
-        LeaveCriticalSection(FFMOCS);
-      end;
+      AudioFrame.Frame := fpip^.Frame;
+      AudioFrame.Samples := fpip^.AudioN;
+      AudioFrame.Channels := fpip^.AudioCh;
+      FAudioEncoder.WaitPush();
+      Move(fpip^.AudioP^, FAudioEncoder.Buffer^, fpip^.AudioN * SizeOf(smallint) * fpip^.AudioCh);
+      FAudioEncoder.Push(@AudioFrame, SizeOf(TAudioFrame));
+      //PutAudio(fpip^.AudioP, fpip^.Frame, fpip^.AudioN, fpip^.AudioCh);
       Exit;
     end;
     if not FPlaying then
@@ -990,6 +983,71 @@ begin
   FReceiver.Done();
 end;
 
+procedure TRamPreview.EncodeVideo(const UserData, Buffer, TempBuffer: Pointer);
+var
+  UD: PVideoFrame absolute UserData;
+  W, H, Len: integer;
+begin
+  case UD^.Mode of
+    0:
+    begin // Full
+      PutVideo(TempBuffer, UD^.Frame, UD^.Width, UD^.Height, UD^.Mode, UD^.Width * SizeOf(TPixelYC) * UD^.Height);
+    end;
+    1:
+    begin // 1/4
+      Len := EncodeYC48ToNV12(TempBuffer, Buffer, UD^.Width, UD^.Height, UD^.Width * SizeOf(TPixelYC));
+      PutVideo(TempBuffer, UD^.Frame, UD^.Width, UD^.Height, UD^.Mode, Len);
+    end;
+    2, 3:
+    begin // 1/16, 1/64
+      W := UD^.Width;
+      H := UD^.Height;
+      DownScaleYC48(TempBuffer, Buffer, W, H, UD^.Width * SizeOf(TPixelYC), ScaleMap[UD^.Mode]);
+      Len := EncodeYC48ToNV12(Buffer, TempBuffer, W, H, W * SizeOf(TPixelYC));
+      PutVideo(Buffer, UD^.Frame, UD^.Width, UD^.Height, UD^.Mode, Len);
+    end;
+  end;
+end;
+
+procedure TRamPreview.EncodeAudio(const UserData, Buffer, TempBuffer: Pointer);
+var
+  UD: PAudioFrame absolute UserData;
+begin
+  PutAudio(Buffer, UD^.Frame, UD^.Samples, UD^.Channels);
+end;
+
+procedure TRamPreview.PutVideo(const Buffer: Pointer; const Frame, Width,
+  Height, Mode, Len: integer);
+begin
+  EnterCriticalSection(FFMOCS);
+  try
+    FMappedViewHeader^.A := Width;
+    FMappedViewHeader^.B := Height;
+    FMappedViewHeader^.C := Mode;
+    Move(Buffer^, FMappedViewData^, Len);
+    Put(Frame + 1, Len + SizeOf(TViewHeader));
+  finally
+    LeaveCriticalSection(FFMOCS);
+  end;
+end;
+
+procedure TRamPreview.PutAudio(const Buffer: Pointer; const Frame, Samples,
+  Channels: integer);
+var
+  Len: integer;
+begin
+  EnterCriticalSection(FFMOCS);
+  try
+    FMappedViewHeader^.A := Samples;
+    FMappedViewHeader^.B := Channels;
+    Len := Samples * SizeOf(smallint) * Channels;
+    Move(Buffer^, FMappedViewData^, Len);
+    Put(-Frame - 1, Len + SizeOf(TViewHeader));
+  finally
+    LeaveCriticalSection(FFMOCS);
+  end;
+end;
+
 function SetFrameRateChangerToNone(const Window: THandle): integer;
 var
   MainMenu, Settings, Changer: THandle;
@@ -1016,10 +1074,12 @@ begin
   FillChar(MII, SizeOf(MII), 0);
   MII.cbSize := SizeOf(TMenuItemInfo);
   MII.fMask := MIIM_STATE or MIIM_ID;
-  for I := 0 to N - 1 do begin
+  for I := 0 to N - 1 do
+  begin
     if not GetMenuItemInfo(Changer, I, True, MII) then
       raise Exception.Create('failed to GetMenuItemInfo');
-    if (MII.fState and MF_CHECKED) = MF_CHECKED then begin
+    if (MII.fState and MF_CHECKED) = MF_CHECKED then
+    begin
       Result := MII.wID;
       break;
     end;
@@ -1032,8 +1092,13 @@ end;
 procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
   FI: TFileInfo;
+  SI: TSysInfo;
   SelectedFrameRateChangerID: integer;
+  Freq, Start, Finish: int64;
 begin
+  if Filter^.ExFunc^.GetSysInfo(nil, @SI) = AVIUTL_FALSE then
+    raise Exception.Create('AviUtl のシステム情報取得に失敗しました');
+
   FillChar(FI, SizeOf(TFileInfo), 0);
   if Filter^.ExFunc^.GetFileInfo(Edit, @FI) = AVIUTL_FALSE then
     raise Exception.Create(
@@ -1050,24 +1115,50 @@ begin
     FCapturing := True;
     DisableGetSaveFileName(True);
     DisablePlaySound(True);
-    Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
+
+    FVideoEncoder := TEncoder.Create(Max(SI.MaxW, 1280) * Max(SI.MaxH, 720) * SizeOf(TPixelYC), True);
+    FAudioEncoder := TEncoder.Create(FI.AudioRate * SizeOf(SmallInt) * FI.AudioCh, False);
+    try
+      FVideoEncoder.OnEncode := @EncodeVideo;
+      FAudioEncoder.OnEncode := @EncodeAudio;
+
+      QueryPerformanceFrequency(Freq);
+      QueryPerformanceCounter(Start);
+
+      Filter^.ExFunc^.EditOutput(Edit, 'RAM', 0, OutputPluginNameANSI);
+
+      QueryPerformanceCounter(Finish);
+      OutputDebugString(PChar(Format('Time: %0.3fms', [(Finish - Start) * 1000 / Freq])));
+    finally
+      FVideoEncoder.Terminate;
+      FVideoEncoder.Push(nil, 0);
+      while not FVideoEncoder.Finished do
+        ThreadSwitch();
+      FreeAndNil(FVideoEncoder);
+
+      FAudioEncoder.Terminate;
+      FAudioEncoder.Push(nil, 0);
+      while not FAudioEncoder.Finished do
+        ThreadSwitch();
+      FreeAndNil(FAudioEncoder);
+    end;
+
+  finally
     DisablePlaySound(False);
     DisableGetSaveFileName(False);
     FCapturing := False;
+    UpdateStatusLabel();
 
-    if FErrorMessage <> '' then
-    begin
+    SendMessage(FMainWindow, WM_COMMAND, LOWORD(SelectedFrameRateChangerID), 0);
+
+    if FErrorMessage = '' then begin
+      Playing := True;
+      Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
+    end else begin
       MessageBoxW(FWindow, PWideChar(
         'キャッシュデータの作成中にエラーが発生しました。'#13#10#13#10 + FErrorMessage),
         PluginName, MB_ICONERROR);
-      Exit;
     end;
-
-    Playing := True;
-    UpdateStatusLabel();
-    Filter^.ExFunc^.SetFrame(Edit, FStartFrame);
-  finally
-    SendMessage(FMainWindow, WM_COMMAND, LOWORD(SelectedFrameRateChangerID), 0);
   end;
 end;
 
@@ -1087,8 +1178,8 @@ begin
     if FCapturing then
       SetWindowText(FStatusLabel,
         PChar(Format('%d%% [%d/%d] %s', [(FCurrentFrame - FStartFrame + 1) *
-        100 div (FEndFrame - FStartFrame + 1), FCurrentFrame - FStartFrame + 1,
-        FEndFrame - FStartFrame + 1, BytesToStr(Stat())])))
+        100 div (FEndFrame - FStartFrame + 1), FCurrentFrame -
+        FStartFrame + 1, FEndFrame - FStartFrame + 1, BytesToStr(Stat())])))
     else
       SetWindowText(FStatusLabel, PChar(BytesToStr(Stat())));
   end
