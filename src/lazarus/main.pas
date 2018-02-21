@@ -13,7 +13,6 @@ type
 
   TRamPreview = class
   private
-    FDrawFrame: boolean;
     FRemoteProcess: TProcess;
     FReceiver: TReceiver;
     FVideoEncoder, FAudioEncoder: TEncoder;
@@ -24,13 +23,16 @@ type
     FMainWindow: THandle;
     FFilters: array of PFilter;
     FOrigProcs: array of TProcFunc;
-    FWindow, FFont, FPlayModeList, FResolution, FCacheCreateButton,
+    FWindow, FFont, FPlayModeList, FResolutionComboBox, FCacheCreateButton,
     FCacheClearButton, FDrawFrameCheckBox, FStatusLabel: THandle;
     FFontHeight: integer;
 
     FMappedFile: THandle;
     FMappedViewHeader: PViewHeader;
     FMappedViewData: Pointer;
+
+    FDrawFrame: boolean;
+    FResolution: integer;
 
     FCapturing: boolean;
     FPlaying: boolean;
@@ -47,7 +49,6 @@ type
     FUpScaleCount: integer;
     {$ENDIF}
 
-    function GetResolution: integer;
     procedure PrepareIPC();
     procedure OnRequest(Sender: TObject; const Command: UTF8String);
     procedure EnterCS(CommandName: string);
@@ -77,8 +78,6 @@ type
 
     procedure ClearStorageCache(Edit: Pointer; Filter: PFilter);
 
-    function GetPlayModeComboBox: boolean;
-    procedure SetPlayModeComboBox(AValue: boolean);
     function GetEntry: PFilterDLL;
     function GetEntryAudio: PFilterDLL;
     function GetEntryExtram: PFilterDLL;
@@ -100,9 +99,7 @@ type
     property EntryAudio: PFilterDLL read GetEntryAudio;
     property EntryExtram: PFilterDLL read GetEntryExtram;
     property Playing: boolean read FPlaying write SetPlaying;
-    property PlayModeComboBox: boolean read GetPlayModeComboBox
-      write SetPlayModeComboBox;
-    property Resolution: integer read GetResolution write SetResolution;
+    property Resolution: integer read FResolution write SetResolution;
     property DrawFrame: boolean read FDrawFrame write SetDrawFrame;
   end;
 
@@ -341,19 +338,19 @@ begin
       Inc(Y, Height);
 
       Height := FFontHeight + GetSystemMetrics(SM_CYFIXEDFRAME) * 2;
-      FResolution := CreateWindowW('COMBOBOX', nil, WS_CHILD or
+      FResolutionComboBox := CreateWindowW('COMBOBOX', nil, WS_CHILD or
         WS_VISIBLE or CBS_DROPDOWNLIST, 8, Y, 160, Height + 300,
         Window, 3, Filter^.DLLHInst, nil);
-      SendMessageW(FResolution, CB_ADDSTRING, 0,
+      SendMessageW(FResolutionComboBox, CB_ADDSTRING, 0,
         {%H-}LPARAM(PWideChar('無圧縮')));
-      SendMessageW(FResolution, CB_ADDSTRING, 0,
+      SendMessageW(FResolutionComboBox, CB_ADDSTRING, 0,
         {%H-}LPARAM(PWideChar('通常品質'))); // 1/4
-      SendMessageW(FResolution, CB_ADDSTRING, 0,
+      SendMessageW(FResolutionComboBox, CB_ADDSTRING, 0,
         {%H-}LPARAM(PWideChar('解像度1/2'))); // 1/16
-      SendMessageW(FResolution, CB_ADDSTRING, 0,
+      SendMessageW(FResolutionComboBox, CB_ADDSTRING, 0,
         {%H-}LPARAM(PWideChar('解像度1/4'))); // 1/64
-      SendMessageW(FResolution, WM_SETFONT, WPARAM(FFont), 0);
-      SendMessageW(FResolution, CB_SETCURSEL, 1, 0);
+      SendMessageW(FResolutionComboBox, WM_SETFONT, WPARAM(FFont), 0);
+      SendMessageW(FResolutionComboBox, CB_SETCURSEL, 1, 0);
       Inc(Y, Height);
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
@@ -437,7 +434,12 @@ begin
             if HIWORD(WP) = LBN_SELCHANGE then
             begin
               SetFocus(FMainWindow);
-              Playing := PlayModeComboBox;
+              case SendMessageW(FPlayModeList, LB_GETCURSEL, 0, 0) of
+                0: Playing := False;
+                1: Playing := True;
+                else
+                  raise Exception.Create('unexpected play mode value');
+              end;
             end;
             Result := AVIUTL_TRUE;
           end;
@@ -451,6 +453,7 @@ begin
           begin
             if HIWORD(WP) = LBN_SELCHANGE then
               SetFocus(FMainWindow);
+            Resolution := SendMessageW(FResolutionComboBox, CB_GETCURSEL, 0, 0);
             Result := AVIUTL_FALSE;
           end;
           4:
@@ -528,7 +531,7 @@ begin
       VideoFrame.Frame := fpip^.Frame;
       VideoFrame.Width := fpip^.X;
       VideoFrame.Height := fpip^.Y;
-      VideoFrame.Mode := Resolution;
+      VideoFrame.Mode := FResolution;
 
       {$IFDEF BENCH_ENCODE}
       QueryPerformanceFrequency(Freq);
@@ -922,17 +925,19 @@ const
 begin
   if FDrawFrame = AValue then Exit;
   SendMessage(FDrawFrameCheckBox, BM_SETCHECK, CheckState[AValue], 0);
-  FDrawFrame:=AValue;
+  FDrawFrame := AValue;
 end;
 
 procedure TRamPreview.SetPlaying(AValue: boolean);
+const
+  V: array[boolean] of WPARAM = (0, 1);
 var
   I: integer;
 begin
   if FPlaying = AValue then
     Exit;
   FPlaying := AValue;
-  PlayModeComboBox := AValue;
+  SendMessageW(FPlayModeList, LB_SETCURSEL, V[AValue], 0);
 
   if not FPlaying then
   begin
@@ -954,14 +959,9 @@ end;
 
 procedure TRamPreview.SetResolution(AValue: integer);
 begin
-  SendMessageW(FResolution, CB_SETCURSEL, AValue, 0);
-end;
-
-procedure TRamPreview.SetPlayModeComboBox(AValue: boolean);
-const
-  V: array[boolean] of WPARAM = (0, 1);
-begin
-  SendMessageW(FPlayModeList, LB_SETCURSEL, V[AValue], 0);
+  if FResolution = AValue then Exit;
+  SendMessageW(FResolutionComboBox, CB_SETCURSEL, AValue, 0);
+  FResolution := AValue;
 end;
 
 function TRamPreview.Stat(): QWord;
@@ -1384,24 +1384,9 @@ begin
   FReceiver.Done();
 end;
 
-function TRamPreview.GetResolution: integer;
-begin
-  Result := SendMessageW(FResolution, CB_GETCURSEL, 0, 0);
-end;
-
 function TRamPreview.GetEntryExtram: PFilterDLL;
 begin
   Result := @FEntryExtram;
-end;
-
-function TRamPreview.GetPlayModeComboBox: boolean;
-begin
-  case SendMessageW(FPlayModeList, LB_GETCURSEL, 0, 0) of
-    0: Result := False;
-    1: Result := True;
-    else
-      raise Exception.Create('unexpected play mode value');
-  end;
 end;
 
 initialization
