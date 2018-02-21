@@ -1346,9 +1346,9 @@ begin
     on E: EProcess do
     begin
       raise Exception.Create('failed to execute: ZRamPreview.exe'#13#10 +
-        WideString(E.Message) + #13#10#13#10 +
-        'Please check whether the antivirus software is blocking program execution.'#13#10
-        + 'アンチウィルスソフトがプログラム実行を阻害していないか確認してください。');
+        WideString(E.Message) + #13#10#13#10
+        + 'アンチウィルスソフトがプログラム実行を阻害していないか確認してください。'#13#10
+        + 'また、AviUtl が日本語やスペースが含まれている場所にある場合は "C:\AviUtl\AviUtl.exe" などに移動してみてください。');
     end;
   end;
   FRemoteProcess.CloseStderr;
