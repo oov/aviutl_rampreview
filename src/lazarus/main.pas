@@ -355,8 +355,8 @@ begin
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
       FDrawFrameCheckBox := CreateWindowW('BUTTON',
-        'プレビュー中は赤枠を描画', BS_CHECKBOX or WS_CHILD or
-        WS_VISIBLE, 8, Y, 160, Height, Window, 5, Filter^.DLLHInst, nil);
+        'プレビュー中は赤枠を描画', BS_CHECKBOX or
+        WS_CHILD or WS_VISIBLE, 8, Y, 160, Height, Window, 5, Filter^.DLLHInst, nil);
       SendMessageW(FDrawFrameCheckBox, WM_SETFONT, WPARAM(FFont), 0);
       Inc(Y, Height + 8);
       DrawFrame := True;
@@ -605,7 +605,8 @@ begin
             {$ENDIF}
           end;
         end;
-        if FDrawFrame and (fp^.ExFunc^.IsSaving(fpip^.EditP) = AVIUTL_FALSE) then begin
+        if FDrawFrame and (fp^.ExFunc^.IsSaving(fpip^.EditP) = AVIUTL_FALSE) then
+        begin
           Color.Y := 1225;
           Color.Cb := -691;
           Color.Cr := 2048;
@@ -923,7 +924,8 @@ procedure TRamPreview.SetDrawFrame(AValue: boolean);
 const
   CheckState: array[boolean] of WPARAM = (BST_UNCHECKED, BST_CHECKED);
 begin
-  if FDrawFrame = AValue then Exit;
+  if FDrawFrame = AValue then
+    Exit;
   SendMessage(FDrawFrameCheckBox, BM_SETCHECK, CheckState[AValue], 0);
   FDrawFrame := AValue;
 end;
@@ -959,7 +961,8 @@ end;
 
 procedure TRamPreview.SetResolution(AValue: integer);
 begin
-  if FResolution = AValue then Exit;
+  if FResolution = AValue then
+    Exit;
   SendMessageW(FResolutionComboBox, CB_SETCURSEL, AValue, 0);
   FResolution := AValue;
 end;
@@ -1346,9 +1349,9 @@ begin
     on E: EProcess do
     begin
       raise Exception.Create('failed to execute: ZRamPreview.exe'#13#10 +
-        WideString(E.Message) + #13#10#13#10
-        + 'アンチウィルスソフトがプログラム実行を阻害していないか確認してください。'#13#10
-        + 'また、AviUtl が日本語やスペースが含まれている場所にある場合は "C:\AviUtl\AviUtl.exe" などに移動してみてください。');
+        WideString(E.Message) + #13#10#13#10 +
+        'アンチウィルスソフトがプログラム実行を阻害していないか確認してください。'#13#10 +
+        'また、AviUtl が日本語やスペースが含まれている場所にある場合は "C:\AviUtl\AviUtl.exe" などに移動してみてください。');
     end;
   end;
   FRemoteProcess.CloseStderr;

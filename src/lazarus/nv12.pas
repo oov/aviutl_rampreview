@@ -8,28 +8,32 @@ interface
 uses
   AviUtl, Parallel;
 
-procedure DrawFrameYC48(const Dest: Pointer; const W, H, DLine, BorderWidth: integer; const Color: TPixelYC); inline;
-procedure CopyYC48(const Parallel: TParallel; Dest, Src: Pointer; const W, H, SLine, DLine: integer); inline;
+procedure DrawFrameYC48(const Dest: Pointer; const W, H, DLine, BorderWidth: integer;
+  const Color: TPixelYC); inline;
+procedure CopyYC48(const Parallel: TParallel; Dest, Src: Pointer;
+  const W, H, SLine, DLine: integer); inline;
 procedure CalcDownScaledSize(var W, H: integer; const Factor: integer); inline;
-procedure DownScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; var W, H: integer;
-  const SLine: integer; const Factor: integer); inline;
-procedure UpScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; const OrigW, OrigH: integer;
-  const DLine: integer; const Factor: integer); inline;
+procedure DownScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer;
+  var W, H: integer; const SLine: integer; const Factor: integer); inline;
+procedure UpScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer;
+  const OrigW, OrigH: integer; const DLine: integer; const Factor: integer); inline;
 function EncodeYC48ToNV12(const Parallel: TParallel; const Dest, Src: Pointer;
   const W, H: integer; const SLine: integer): integer; inline;
-procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest, Src: Pointer; const W, H: integer;
-  const DLine: integer); inline;
+procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest, Src: Pointer;
+  const W, H: integer; const DLine: integer); inline;
 
 implementation
 
-procedure DrawFrameYC48(const Dest: Pointer; const W, H, DLine, BorderWidth: integer; const Color: TPixelYC); inline;
+procedure DrawFrameYC48(const Dest: Pointer; const W, H, DLine, BorderWidth: integer;
+  const Color: TPixelYC); inline;
 var
   X, Y: integer;
   D1, D2: Pointer;
 begin
   D1 := Dest;
   D2 := Dest + (H - BorderWidth) * DLine;
-  for X := 0 to W - 1 do begin
+  for X := 0 to W - 1 do
+  begin
     PPixelYC(D1)^ := Color;
     PPixelYC(D2)^ := Color;
     Inc(D1, SizeOf(TPixelYC));
@@ -37,14 +41,16 @@ begin
   end;
   Dec(D1, W * SizeOf(TPixelYC));
   Dec(D2, W * SizeOf(TPixelYC));
-  for Y := 1 to BorderWidth - 1 do begin
+  for Y := 1 to BorderWidth - 1 do
+  begin
     Move(D1^, (D1 + Y * DLine)^, W * SizeOf(TPixelYC));
     Move(D2^, (D2 + Y * DLine)^, W * SizeOf(TPixelYC));
   end;
 
   Inc(D1, (BorderWidth - 1) * DLine);
   D2 := D1 + (W - BorderWidth) * SizeOf(TPixelYC);
-  for Y := 1 to H - BorderWidth * 2 do begin
+  for Y := 1 to H - BorderWidth * 2 do
+  begin
     Move(D1^, (D1 + Y * DLine)^, BorderWidth * SizeOf(TPixelYC));
     Move(D2^, (D2 + Y * DLine)^, BorderWidth * SizeOf(TPixelYC));
   end;
@@ -78,7 +84,8 @@ begin
   end;
 end;
 
-procedure CopyYC48(const Parallel: TParallel; Dest, Src: Pointer; const W, H, SLine, DLine: integer); inline;
+procedure CopyYC48(const Parallel: TParallel; Dest, Src: Pointer;
+  const W, H, SLine, DLine: integer); inline;
 var
   Params: TCopyYC48Params;
 begin
@@ -130,15 +137,15 @@ begin
   end;
 end;
 
-procedure DownScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; var W, H: integer;
-  const SLine: integer; const Factor: integer); inline;
+procedure DownScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer;
+  var W, H: integer; const SLine: integer; const Factor: integer); inline;
 var
   Params: TDownScaleYC48Params;
 begin
   CalcDownScaledSize(W, H, Factor);
   Params.Dest := Dest;
   Params.Src := Src;
-  Params.Factor:= Factor;
+  Params.Factor := Factor;
   Params.SLine := SLine * Factor;
   Params.Width := W;
   // Parallelization overhead is too big, currently disabled.
@@ -203,7 +210,7 @@ begin
     end;
     Inc(Dest, DLine * Factor);
   end;
-  if (Index + N = FH)and(SH <> FH) then
+  if (Index + N = FH) and (SH <> FH) then
   begin
     D := PPixelYC(Dest);
     for X := 0 to FW - 1 do
@@ -234,14 +241,14 @@ begin
   end;
 end;
 
-procedure UpScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; const OrigW, OrigH: integer;
-  const DLine: integer; const Factor: integer); inline;
+procedure UpScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer;
+  const OrigW, OrigH: integer; const DLine: integer; const Factor: integer); inline;
 var
   Params: TUpScaleYC48Params;
 begin
   Params.Dest := Dest;
   Params.Src := Src;
-  Params.Factor:= Factor;
+  Params.Factor := Factor;
   Params.OrigW := OrigW;
   Params.OrigH := OrigH;
   Params.DLine := DLine;
@@ -319,7 +326,7 @@ begin
     Inc(DY1, DLine);
     Inc(DY2, DLine);
   end;
-  if (Index + N = YHB)and(YHB <> UVH) then
+  if (Index + N = YHB) and (YHB <> UVH) then
   begin
     S1 := PPixelYC(S);
     //for Y := YHB * 2 to H - 1 do
@@ -442,7 +449,7 @@ begin
     Inc(SY1, SLine);
     Inc(SY2, SLine);
   end;
-  if (Index + N = YHB)and(YHB <> UVH) then
+  if (Index + N = YHB) and (YHB <> UVH) then
   begin
     D1 := PPixelYC(D);
     //for Y := YHB * 2 to H - 1 do
@@ -481,9 +488,8 @@ begin
   end;
 end;
 
-
-procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest: Pointer; const Src: Pointer;
-  const W, H: integer; const DLine: integer); inline;
+procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest: Pointer;
+  const Src: Pointer; const W, H: integer; const DLine: integer); inline;
 var
   Params: TDecodeNV12ToYC48Params;
 begin
