@@ -13,6 +13,7 @@ type
 
   TRamPreview = class
   private
+    FDrawFrame: boolean;
     FRemoteProcess: TProcess;
     FReceiver: TReceiver;
     FVideoEncoder, FAudioEncoder: TEncoder;
@@ -24,7 +25,7 @@ type
     FFilters: array of PFilter;
     FOrigProcs: array of TProcFunc;
     FWindow, FFont, FPlayModeList, FResolution, FCacheCreateButton,
-    FCacheClearButton, FStatusLabel: THandle;
+    FCacheClearButton, FDrawFrameCheckBox, FStatusLabel: THandle;
     FFontHeight: integer;
 
     FMappedFile: THandle;
@@ -53,6 +54,7 @@ type
     procedure LeaveCS(CommandName: string);
 
     procedure Clear();
+    procedure SetDrawFrame(AValue: boolean);
     procedure SetPlaying(AValue: boolean);
     procedure SetResolution(AValue: integer);
     function Stat(): QWord;
@@ -101,6 +103,7 @@ type
     property PlayModeComboBox: boolean read GetPlayModeComboBox
       write SetPlayModeComboBox;
     property Resolution: integer read GetResolution write SetResolution;
+    property DrawFrame: boolean read FDrawFrame write SetDrawFrame;
   end;
 
 function GetFilterTableList(): PPFilterDLL; stdcall;
@@ -351,7 +354,15 @@ begin
         {%H-}LPARAM(PWideChar('解像度1/4'))); // 1/64
       SendMessageW(FResolution, WM_SETFONT, WPARAM(FFont), 0);
       SendMessageW(FResolution, CB_SETCURSEL, 1, 0);
+      Inc(Y, Height);
+
+      Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
+      FDrawFrameCheckBox := CreateWindowW('BUTTON',
+        'プレビュー中は赤枠を描画', BS_CHECKBOX or WS_CHILD or
+        WS_VISIBLE, 8, Y, 160, Height, Window, 5, Filter^.DLLHInst, nil);
+      SendMessageW(FDrawFrameCheckBox, WM_SETFONT, WPARAM(FFont), 0);
       Inc(Y, Height + 8);
+      DrawFrame := True;
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
       FCacheClearButton := CreateWindowW('BUTTON', PWideChar('キャッシュ消去'),
@@ -448,6 +459,14 @@ begin
             ClearCache(Edit, Filter);
             Result := AVIUTL_TRUE;
           end;
+          5:
+          begin
+            DrawFrame := not DrawFrame;
+            if FPlaying then
+              Result := AVIUTL_TRUE
+            else
+              Result := AVIUTL_FALSE;
+          end;
         end;
       except
         on E: Exception do
@@ -500,6 +519,7 @@ var
   X, Y, Len: integer;
   VideoFrame: TVideoFrame;
   Freq, Start, Finish: int64;
+  Color: TPixelYC;
 begin
   Result := True;
   try
@@ -581,6 +601,12 @@ begin
                 [FUpScaleTime / FUpScaleCount])));
             {$ENDIF}
           end;
+        end;
+        if FDrawFrame and (fp^.ExFunc^.IsSaving(fpip^.EditP) = AVIUTL_FALSE) then begin
+          Color.Y := 1225;
+          Color.Cb := -691;
+          Color.Cr := 2048;
+          DrawFrameYC48(fpip^.YCPEdit, fpip^.X, fpip^.Y, fpip^.LineSize, 4, Color);
         end;
       end
       else
@@ -690,6 +716,9 @@ begin
     I := SL.IndexOfName('resolution');
     if I <> -1 then
       Resolution := StrToIntDef(SL.ValueFromIndex[I], 0);
+    I := SL.IndexOfName('drawframe');
+    if I <> -1 then
+      DrawFrame := StrToIntDef(SL.ValueFromIndex[I], 0) <> 0;
     Result := True;
   finally
     SL.Free();
@@ -707,6 +736,7 @@ begin
     SL := TStringList.Create();
     try
       SL.Add('resolution=' + IntToStr(Resolution));
+      SL.Add('drawframe=' + IntToStr(Ord(DrawFrame)));
       SL.SaveToStream(MS);
     finally
       SL.Free();
@@ -884,6 +914,15 @@ begin
   end;
   FReceiver.WaitResult();
   FReceiver.Done();
+end;
+
+procedure TRamPreview.SetDrawFrame(AValue: boolean);
+const
+  CheckState: array[boolean] of WPARAM = (BST_UNCHECKED, BST_CHECKED);
+begin
+  if FDrawFrame = AValue then Exit;
+  SendMessage(FDrawFrameCheckBox, BM_SETCHECK, CheckState[AValue], 0);
+  FDrawFrame:=AValue;
 end;
 
 procedure TRamPreview.SetPlaying(AValue: boolean);

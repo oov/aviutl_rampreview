@@ -6,8 +6,9 @@ unit NV12;
 interface
 
 uses
-  Parallel;
+  AviUtl, Parallel;
 
+procedure DrawFrameYC48(const Dest: Pointer; const W, H, DLine, BorderWidth: integer; const Color: TPixelYC); inline;
 procedure CopyYC48(const Parallel: TParallel; Dest, Src: Pointer; const W, H, SLine, DLine: integer); inline;
 procedure CalcDownScaledSize(var W, H: integer; const Factor: integer); inline;
 procedure DownScaleYC48(const Parallel: TParallel; const Dest, Src: Pointer; var W, H: integer;
@@ -21,8 +22,33 @@ procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest, Src: Pointer; 
 
 implementation
 
-uses
-  Windows, AviUtl;
+procedure DrawFrameYC48(const Dest: Pointer; const W, H, DLine, BorderWidth: integer; const Color: TPixelYC); inline;
+var
+  X, Y: integer;
+  D1, D2: Pointer;
+begin
+  D1 := Dest;
+  D2 := Dest + (H - BorderWidth) * DLine;
+  for X := 0 to W - 1 do begin
+    PPixelYC(D1)^ := Color;
+    PPixelYC(D2)^ := Color;
+    Inc(D1, SizeOf(TPixelYC));
+    Inc(D2, SizeOf(TPixelYC));
+  end;
+  Dec(D1, W * SizeOf(TPixelYC));
+  Dec(D2, W * SizeOf(TPixelYC));
+  for Y := 1 to BorderWidth - 1 do begin
+    Move(D1^, (D1 + Y * DLine)^, W * SizeOf(TPixelYC));
+    Move(D2^, (D2 + Y * DLine)^, W * SizeOf(TPixelYC));
+  end;
+
+  Inc(D1, (BorderWidth - 1) * DLine);
+  D2 := D1 + (W - BorderWidth) * SizeOf(TPixelYC);
+  for Y := 1 to H - BorderWidth * 2 do begin
+    Move(D1^, (D1 + Y * DLine)^, BorderWidth * SizeOf(TPixelYC));
+    Move(D2^, (D2 + Y * DLine)^, BorderWidth * SizeOf(TPixelYC));
+  end;
+end;
 
 type
   TCopyYC48Params = record
