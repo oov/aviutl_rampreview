@@ -255,6 +255,7 @@ var
   I, Sec, SamplePos, NextSamplePos, SampleOffset, Frame, Read: integer;
   aborted: AviUtlBool;
   P: Pointer;
+  // VideoFrame: TVideoFrame;
   AudioFrame: TAudioFrame;
   {$IFDEF BENCH_ENCODE}
   Freq, Start, Finish: int64;
@@ -283,7 +284,24 @@ begin
     end;
     OI^.RestTimeDisp(I, OI^.N);
 
-    OI^.GetVideoEx(I, FOURCC_YC48);
+    P := OI^.GetVideoEx(I, FOURCC_YC48);
+    // This route is slow than capture on filter.
+    // Because we can not avoid memory copy at aviutl side in this route.
+    // VideoFrame.Frame := Frame;
+    // VideoFrame.Width := OI^.W;
+    // VideoFrame.Height := OI^.H;
+    // VideoFrame.Mode := RamPreview.FResolution;
+    // {$IFDEF BENCH_ENCODE}
+    // QueryPerformanceFrequency(Freq);
+    // QueryPerformanceCounter(Start);
+    // {$ENDIF}
+    // RamPreview.FVideoEncoder.WaitPush();
+    // Move(P^, RamPreview.FVideoEncoder.Buffer^, OI^.W * OI^.H * SizeOf(TPixelYC));
+    // RamPreview.FVideoEncoder.Push(@VideoFrame, SizeOf(TVideoFrame));
+    // {$IFDEF BENCH_ENCODE}
+    // QueryPerformanceCounter(Finish);
+    // RamPreview.FVideoPushTime := RamPreview.FVideoPushTime + (Finish - Start) * 1000 / Freq;
+    // {$ENDIF}
 
     SamplePos := NextSamplePos;
     Inc(Sec, OI^.Scale);
