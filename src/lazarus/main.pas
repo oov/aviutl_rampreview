@@ -131,6 +131,17 @@ const
   BoolConv: array[boolean] of AviUtlBool = (AVIUTL_FALSE, AVIUTL_TRUE);
   ScaleMap: array[0..3] of integer = (1, 1, 2, 4);
 
+type
+  TVideoFrame = record
+    Frame, Width, Height, Mode: integer;
+  end;
+  PVideoFrame = ^TVideoFrame;
+
+  TAudioFrame = record
+    Frame, Samples, Channels: integer;
+  end;
+  PAudioFrame = ^TAudioFrame;
+
 var
   FilterDLLList: array of PFilterDLL;
   OutputPluginTable: TOutputPluginTable;
@@ -241,16 +252,23 @@ end;
 
 function OutputFuncOutput(OI: POutputInfo): AviUtlBool; cdecl;
 var
-  I, Sec, SamplePos, NextSamplePos, Read: integer;
+  I, Sec, SamplePos, NextSamplePos, SampleOffset, Frame, Read: integer;
   aborted: AviUtlBool;
+  P: Pointer;
+  AudioFrame: TAudioFrame;
+  {$IFDEF BENCH_ENCODE}
+  Freq, Start, Finish: int64;
+  {$ENDIF}
 begin
   if not RamPreview.FCapturing then
   begin
     Result := AVIUTL_FALSE;
     Exit;
   end;
-  Sec := 0;
-  NextSamplePos := 0;
+  Sec := OI^.Scale * RamPreview.FStartFrame;
+  Frame := RamPreview.FStartFrame;
+  NextSamplePos := (Sec * OI^.AudioRate) div OI^.Rate;
+  SampleOffset := NextSamplePos;
   for I := 0 to OI^.N - 1 do
   begin
     DisableMessageBox(True);
@@ -264,13 +282,33 @@ begin
       Exit;
     end;
     OI^.RestTimeDisp(I, OI^.N);
+
+    OI^.GetVideoEx(I, FOURCC_YC48);
+
     SamplePos := NextSamplePos;
     Inc(Sec, OI^.Scale);
     NextSamplePos := (Sec * OI^.AudioRate) div OI^.Rate;
-    OI^.GetVideoEx(I, FOURCC_YC48);
-    OI^.GetAudio(SamplePos, NextSamplePos - SamplePos, @Read);
+    P := OI^.GetAudio(SamplePos - SampleOffset, NextSamplePos - SamplePos, @Read);
+    AudioFrame.Frame := Frame;
+    AudioFrame.Samples := NextSamplePos - SamplePos;
+    AudioFrame.Channels := OI^.AudioChannel;
+    {$IFDEF BENCH_ENCODE}
+    QueryPerformanceFrequency(Freq);
+    QueryPerformanceCounter(Start);
+    {$ENDIF}
+    RamPreview.FAudioEncoder.WaitPush();
+    Move(P^, RamPreview.FAudioEncoder.Buffer^, AudioFrame.Samples *
+      SizeOf(smallint) * AudioFrame.Channels);
+    RamPreview.FAudioEncoder.Push(@AudioFrame, SizeOf(TAudioFrame));
+    {$IFDEF BENCH_ENCODE}
+    QueryPerformanceCounter(Finish);
+    RamPreview.FAudioPushTime := RamPreview.FAudioPushTime + (Finish - Start) * 1000 / Freq;
+    {$ENDIF}
+
     if (I and 15) = 0 then
       OI^.UpdatePreview();
+
+    Inc(Frame);
   end;
   RamPreview.FCapturing := False;
   Result := AVIUTL_TRUE;
@@ -505,17 +543,6 @@ begin
   end;
 end;
 
-type
-  TVideoFrame = record
-    Frame, Width, Height, Mode: integer;
-  end;
-  PVideoFrame = ^TVideoFrame;
-
-  TAudioFrame = record
-    Frame, Samples, Channels: integer;
-  end;
-  PAudioFrame = ^TAudioFrame;
-
 function TRamPreview.FilterProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
 var
   S: string;
@@ -643,32 +670,11 @@ end;
 function TRamPreview.FilterAudioProc(fp: PFilter; fpip: PFilterProcInfo): boolean;
 var
   Len: integer;
-  AudioFrame: TAudioFrame;
-  Freq, Start, Finish: int64;
 begin
   Result := True;
   try
     if FCapturing then
-    begin
-      if (FStartFrame > fpip^.Frame) or (fpip^.Frame > FEndFrame) then
-        Exit;
-      AudioFrame.Frame := fpip^.Frame;
-      AudioFrame.Samples := fpip^.AudioN;
-      AudioFrame.Channels := fpip^.AudioCh;
-      {$IFDEF BENCH_ENCODE}
-      QueryPerformanceFrequency(Freq);
-      QueryPerformanceCounter(Start);
-      {$ENDIF}
-      FAudioEncoder.WaitPush();
-      Move(fpip^.AudioP^, FAudioEncoder.Buffer^, fpip^.AudioN *
-        SizeOf(smallint) * fpip^.AudioCh);
-      FAudioEncoder.Push(@AudioFrame, SizeOf(TAudioFrame));
-      {$IFDEF BENCH_ENCODE}
-      QueryPerformanceCounter(Finish);
-      FAudioPushTime := FAudioPushTime + (Finish - Start) * 1000 / Freq;
-      {$ENDIF}
       Exit;
-    end;
     if not FPlaying then
       Exit;
     EnterCriticalSection(FFMOCS);
