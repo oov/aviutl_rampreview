@@ -252,7 +252,8 @@ end;
 
 function OutputFuncOutput(OI: POutputInfo): AviUtlBool; cdecl;
 var
-  I, Sec, SamplePos, NextSamplePos, SampleOffset, Frame, Read: integer;
+  I, Frame, Read: integer;
+  Sec, SamplePos, NextSamplePos, SampleOffset: QWORD;
   aborted: AviUtlBool;
   P: Pointer;
   // VideoFrame: TVideoFrame;
