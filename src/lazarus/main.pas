@@ -1400,13 +1400,8 @@ begin
         PluginName, MB_ICONERROR);
   end;
 
-  EnterCS('FMO ');
-  try
-    FRemoteProcess.Input.WriteBuffer('FMO ', 4);
-    WriteUInt64(FRemoteProcess.Input, h);
-  finally
-    LeaveCS('FMO ');
-  end;
+  FRemoteProcess.Input.WriteBuffer('FMO ', 4);
+  WriteUInt64(FRemoteProcess.Input, h);
   FReceiver.WaitResult();
   FReceiver.Done();
 end;
