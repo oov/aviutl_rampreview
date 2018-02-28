@@ -24,6 +24,9 @@ procedure DecodeNV12ToYC48(const Parallel: TParallel; const Dest, Src: Pointer;
 
 implementation
 
+uses
+  Math;
+
 procedure DrawFrameYC48(const Dest: Pointer; const W, H, DLine, BorderWidth: integer;
   const Color: TPixelYC); inline;
 var
@@ -295,12 +298,12 @@ begin
     S2 := PPixelYC(S + SLine);
     for X := 0 to YWB - 1 do
     begin
-      DUV^.U := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
-      DUV^.V := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
-      (DY1 + 0)^ := (((S1 + 0)^.Y * 219 + 383) shr 12) + 16;
-      (DY1 + 1)^ := (((S1 + 1)^.Y * 219 + 383) shr 12) + 16;
-      (DY2 + 0)^ := (((S2 + 0)^.Y * 219 + 383) shr 12) + 16;
-      (DY2 + 1)^ := (((S2 + 1)^.Y * 219 + 383) shr 12) + 16;
+      DUV^.U := (((EnsureRange(S1^.Cb, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
+      DUV^.V := (((EnsureRange(S1^.Cr, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
+      (DY1 + 0)^ := ((EnsureRange((S1 + 0)^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
+      (DY1 + 1)^ := ((EnsureRange((S1 + 1)^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
+      (DY2 + 0)^ := ((EnsureRange((S2 + 0)^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
+      (DY2 + 1)^ := ((EnsureRange((S2 + 1)^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
       Inc(DY1, 2);
       Inc(DY2, 2);
       Inc(S1, 2);
@@ -309,12 +312,12 @@ begin
     end;
     if YWB <> UVW then
     begin
-      DUV^.U := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
-      DUV^.V := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
+      DUV^.U := (((EnsureRange(S1^.Cb, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
+      DUV^.V := (((EnsureRange(S1^.Cr, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
       //for X := YWB * 2 to W - 1 do
       //begin
-      DY1^ := ((S1^.Y * 219 + 383) shr 12) + 16;
-      DY2^ := ((S2^.Y * 219 + 383) shr 12) + 16;
+      DY1^ := ((EnsureRange(S1^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
+      DY2^ := ((EnsureRange(S2^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
       Inc(DY1);
       Inc(DY2);
       Inc(S1);
@@ -333,21 +336,21 @@ begin
     //begin
     for X := 0 to YWB - 1 do
     begin
-      DUV^.U := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
-      DUV^.V := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
-      (DY1 + 0)^ := (((S1 + 0)^.Y * 219 + 383) shr 12) + 16;
-      (DY1 + 1)^ := (((S1 + 1)^.Y * 219 + 383) shr 12) + 16;
+      DUV^.U := (((EnsureRange(S1^.Cb, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
+      DUV^.V := (((EnsureRange(S1^.Cr, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
+      (DY1 + 0)^ := ((EnsureRange((S1 + 0)^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
+      (DY1 + 1)^ := ((EnsureRange((S1 + 1)^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
       Inc(DY1, 2);
       Inc(S1, 2);
       Inc(DUV);
     end;
     if YWB <> UVW then
     begin
-      DUV^.U := (((S1^.Cb + 2048) * 7 + 66) shr 7) + 16;
-      DUV^.V := (((S1^.Cr + 2048) * 7 + 66) shr 7) + 16;
+      DUV^.U := (((EnsureRange(S1^.Cb, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
+      DUV^.V := (((EnsureRange(S1^.Cr, -2048, 2048) + 2048) * 7 + 66) shr 7) + 16;
       //for X := YWB * 2 to W - 1 do
       //begin
-      DY1^ := ((S1^.Y * 219 + 383) shr 12) + 16;
+      DY1^ := ((EnsureRange(S1^.Y, 0, 4096) * 219 + 383) shr 12) + 16;
       //Inc(DY1);
       //Inc(S1);
       //end;
