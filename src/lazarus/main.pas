@@ -321,7 +321,8 @@ begin
     RamPreview.FAudioEncoder.Push(@AudioFrame, SizeOf(TAudioFrame));
     {$IFDEF BENCH_ENCODE}
     QueryPerformanceCounter(Finish);
-    RamPreview.FAudioPushTime := RamPreview.FAudioPushTime + (Finish - Start) * 1000 / Freq;
+    RamPreview.FAudioPushTime :=
+      RamPreview.FAudioPushTime + (Finish - Start) * 1000 / Freq;
     {$ENDIF}
 
     if (I and 15) = 0 then
@@ -1378,8 +1379,7 @@ begin
     begin
       raise Exception.Create('failed to execute: ZRamPreview.exe'#13#10 +
         WideString(E.Message) + #13#10#13#10 +
-        'アンチウィルスソフトがプログラム実行を阻害していないか確認してください。'#13#10 +
-        'また、AviUtl が日本語やスペースが含まれている場所にある場合は "C:\AviUtl\AviUtl.exe" などに移動してみてください。');
+        'アンチウィルスソフトがプログラム実行を阻害していないか確認してください。'#13#10 + 'また、AviUtl が日本語やスペースが含まれている場所にある場合は "C:\AviUtl\AviUtl.exe" などに移動してみてください。');
     end;
   end;
   FRemoteProcess.CloseStderr;
