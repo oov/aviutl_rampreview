@@ -1291,6 +1291,9 @@ begin
         'TotalTime: %0.3fms / Compress: Avg %0.3fms / Transfer: Avg %0.3fms / VideoPushTime: Avg %0.3fms / AudioPushTime: Avg %0.3fms',
         [(Finish - Start) * 1000 / Freq, FCompressTime / Frames,
         FTransferTime / Frames, FVideoPushTime / Frames, FAudioPushTime / Frames])));
+      {$ELSE}
+      OutputDebugString(PChar(Format('TotalTime: %0.3fms',
+        [(Finish - Start) * 1000 / Freq])));
       {$ENDIF}
     finally
       FVideoEncoder.Terminate;
