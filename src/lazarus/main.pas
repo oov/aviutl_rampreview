@@ -1258,6 +1258,8 @@ begin
   if Filter^.ExFunc^.GetSelectFrame(Edit, FStartFrame, FEndFrame) = AVIUTL_FALSE then
     raise Exception.Create('選択範囲を取得できませんでした');
 
+  Clear();
+
   SelectedFrameRateChangerID := SetFrameRateChangerToNone(FMainWindow);
   try
     FErrorMessage := '';
