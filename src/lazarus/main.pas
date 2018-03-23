@@ -863,7 +863,7 @@ begin
   ws[Length(ws) - 2] := 'e';
   ws[Length(ws) - 1] := 'x';
   ws[Length(ws) - 0] := 'e';
-  FRemoteProcess.Executable := ws;
+  FRemoteProcess.ApplicationName := string(ws);
   FRemoteProcess.Options := [poUsePipes, poNoConsole];
   FReceiver := nil;
 
