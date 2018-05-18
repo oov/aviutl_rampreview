@@ -315,10 +315,13 @@ begin
     QueryPerformanceFrequency(Freq);
     QueryPerformanceCounter(Start);
     {$ENDIF}
-    RamPreview.FAudioEncoder.WaitPush();
-    Move(P^, RamPreview.FAudioEncoder.Buffer^, AudioFrame.Samples *
-      SizeOf(smallint) * AudioFrame.Channels);
-    RamPreview.FAudioEncoder.Push(@AudioFrame, SizeOf(TAudioFrame));
+    if Read > 0 then
+    begin
+      RamPreview.FAudioEncoder.WaitPush();
+      Move(P^, RamPreview.FAudioEncoder.Buffer^, AudioFrame.Samples *
+        SizeOf(smallint) * AudioFrame.Channels);
+      RamPreview.FAudioEncoder.Push(@AudioFrame, SizeOf(TAudioFrame));
+    end;
     {$IFDEF BENCH_ENCODE}
     QueryPerformanceCounter(Finish);
     RamPreview.FAudioPushTime :=
