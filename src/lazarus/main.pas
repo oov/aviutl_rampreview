@@ -1204,7 +1204,7 @@ end;
 function SetFrameRateChangerToNone(const Window: THandle): integer;
 var
   MainMenu, Settings, Changer: THandle;
-  I, N, ID: integer;
+  I, J, N, ID, ChangerIndex: integer;
   MII: TMenuItemInfo;
 begin
   MainMenu := GetMenu(Window);
@@ -1219,7 +1219,25 @@ begin
   if N < 8 then
     raise Exception.Create('unexpected Settings menu item count');
 
-  Changer := GetSubMenu(Settings, N - 6);
+  ChangerIndex := -1;
+  J := 0;
+  for I := N - 1 downto 0 do begin
+    FillChar(MII, SizeOf(MII), 0);
+    MII.cbSize := SizeOf(TMenuItemInfo);
+    MII.fMask := MIIM_STATE or MIIM_TYPE;
+    GetMenuItemInfo(Settings, I, True, MII);
+    if (MII.fType and MFT_SEPARATOR) = MFT_SEPARATOR then begin
+      Inc(J);
+      if J = 2 then begin
+        ChangerIndex := I + 2;
+        break;
+      end;
+    end;
+  end;
+  if ChangerIndex = -1 then
+    raise Exception.Create('FrameRateChanger menu item not found');
+
+  Changer := GetSubMenu(Settings, ChangerIndex);
   N := GetMenuItemCount(Changer);
   if N <> 8 then
     raise Exception.Create('unexpected FrameRateChanger menu item count');
