@@ -409,6 +409,8 @@ type
   TOutputInitFunc = function(): AviUtlBool; cdecl;
   TOutputExitFunc = function(): AviUtlBool; cdecl;
   TOutputFunc = function(OI: POutputInfo): AviUtlBool; cdecl;
+  TOutputConfigFunc = function(hwnd: THandle; dll_hinst: THandle): AviUtlBool; cdecl;
+  TOutputConfigSetFunc = function(data: Pointer; size: Integer): Integer; cdecl;
   TOutputPluginTable = record
     Flag: integer;
     Name: PChar;
@@ -417,8 +419,8 @@ type
     FuncInit: TOutputInitFunc;
     FuncExit: TOutputExitFunc;
     FuncOutput: TOutputFunc;
-    FuncConfig: Pointer;
-    FuncConfigSet: Pointer;
+    FuncConfig: TOutputConfigFunc;
+    FuncConfigSet: TOutputConfigSetFunc;
     FuncConfigGet: Pointer;
     Reserved: array[0..15] of integer;
   end;
