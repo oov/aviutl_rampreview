@@ -86,6 +86,23 @@ Extram.dll は拡張編集の Lua スクリプトから `ZRamPreview.exe` にデ
 
 https://github.com/oov/aviutl_rampreview/wiki/Extram
 
+## AviUtl プラグイン開発者の方へ
+
+拡張編集RAMプレビューではキャッシュからの再生時には負荷が掛かる処理を回避する必要があるため、
+`func_proc` をダミー関数に差し替えることでビデオフィルタ／オーディオフィルタを強制的に無効化しています。
+
+その結果としてキャッシュからの再生時にはプラグインの処理が呼び出されなくなっており、
+場合によってはこの挙動では困ることがあります。
+
+フィルタープラグインを作成する際に `GetFilterTable` や `GetFilterTableList` の他に
+`RPKeepActive` という関数をエクスポートしておくと、この挙動をコントロールすることが可能です。
+
+```c
+EXTERN_C __declspec(dllexport) BOOL __stdcall RPKeepActive( FILTER *fp ) {
+	return TRUE; // キャッシュ再生中に無効化されたくない場合は TRUE を返す
+}
+```
+
 ## 既知の不具合
 
 ### 出力プラグインの設定が飛ぶ

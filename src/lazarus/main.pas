@@ -132,6 +132,7 @@ const
   ScaleMap: array[0..3] of integer = (1, 1, 2, 4);
 
 type
+  TRPKeepActiveProc = function (fp: PFilter): AviUtlBool; stdcall;
   TVideoFrame = record
     Frame, Width, Height, Mode: integer;
   end;
@@ -964,6 +965,7 @@ const
   V: array[boolean] of WPARAM = (0, 1);
 var
   I: integer;
+  RPKA: TRPKeepActiveProc;
 begin
   if FPlaying = AValue then
     Exit;
@@ -983,8 +985,15 @@ begin
   begin
     FOrigProcs[I] := FFilters[I]^.FuncProc;
     if (FOrigProcs[I] <> nil) and (FOrigProcs[I] <> @FilterFuncProc) and
-      (FOrigProcs[I] <> @FilterAudioFuncProc) then
+      (FOrigProcs[I] <> @FilterAudioFuncProc) then begin
+      if FFilters[I]^.DLLHInst <> 0 then begin
+        RPKA := TRPKeepActiveProc(GetProcAddress(FFilters[I]^.DLLHInst, 'RPKeepActive'));
+        if (RPKA <> nil) and (RPKA(FFilters[I]) <> AVIUTL_FALSE) then begin
+          continue;
+        end;
+      end;
       FFilters[I]^.FuncProc := @DummyFuncProc;
+    end;
   end;
 end;
 
