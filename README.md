@@ -108,7 +108,7 @@ https://github.com/oov/aviutl_rampreview/wiki/FAQ
 Windows Subsystem for Linux 上で `./build.bash` を行うと必要なファイルがビルドできます。
 なお、リポジトリは GOPATH 上にある前提でコードが書かれています。
 
-ソースコードのコンパイルには Go 1.10.1 windows/amd64、Lazarus 1.8.2 for Windows 32bit が必要です。  
+ソースコードのコンパイルには Go 1.11.5 windows/amd64、Lazarus 2.0.0 for Windows 32bit が必要です。  
 Lazarus は C:\lazarus にインストールされているのを想定しています。
 
 ## Credits
