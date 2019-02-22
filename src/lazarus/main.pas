@@ -135,6 +135,8 @@ const
 
 type
   TRPKeepActiveProc = function (fp: PFilter): AviUtlBool; stdcall;
+  TRPStartCapturing = procedure (fp: PFilter); stdcall;
+  TRPEndCapturing = procedure (fp: PFilter); stdcall;
   TVideoFrame = record
     Frame, Width, Height, Mode: integer;
   end;
@@ -1275,8 +1277,10 @@ procedure TRamPreview.CaptureRange(Edit: Pointer; Filter: PFilter);
 var
   FI: TFileInfo;
   SI: TSysInfo;
-  SelectedFrameRateChangerID, Frames: integer;
+  SelectedFrameRateChangerID, Frames, I: integer;
   Freq, Start, Finish: int64;
+  StartCapturingProc: TRPStartCapturing;
+  EndCapturingProc: TRPEndCapturing;
 begin
   if Filter^.ExFunc^.GetSysInfo(nil, @SI) = AVIUTL_FALSE then
     raise Exception.Create('AviUtl のシステム情報取得に失敗しました');
@@ -1306,6 +1310,18 @@ begin
     DisableGetSaveFileName(True);
     DisablePlaySound(True);
     SetWindowTextW(FCacheCreateButton, AbortButtonCaption);
+
+    try
+      for I := Low(FFilters) to High(FFilters) do
+      begin
+        if FFilters[I]^.DLLHInst <> 0 then begin
+          StartCapturingProc := TRPStartCapturing(GetProcAddress(FFilters[I]^.DLLHInst, 'RPStartCapturing'));
+          if StartCapturingProc <> nil then
+            StartCapturingProc(FFilters[I]);
+        end;
+      end;
+    except
+    end;
 
     FVideoEncoder := TEncoder.Create(Max(SI.MaxW, 1280) * Max(SI.MaxH, 720) *
       SizeOf(TPixelYC), True);
@@ -1346,6 +1362,18 @@ begin
     end;
 
   finally
+    try
+      for I := Low(FFilters) to High(FFilters) do
+      begin
+        if FFilters[I]^.DLLHInst <> 0 then begin
+          EndCapturingProc := TRPEndCapturing(GetProcAddress(FFilters[I]^.DLLHInst, 'RPEndCapturing'));
+          if EndCapturingProc <> nil then
+            EndCapturingProc(FFilters[I]);
+        end;
+      end;
+    except
+    end;
+
     SetWindowTextW(FCacheCreateButton, CaptureButtonCaption);
     DisablePlaySound(False);
     DisableGetSaveFileName(False);

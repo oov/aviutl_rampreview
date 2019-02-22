@@ -99,7 +99,20 @@ https://github.com/oov/aviutl_rampreview/wiki/Extram
 
 ```c
 EXTERN_C __declspec(dllexport) BOOL __stdcall RPKeepActive( FILTER *fp ) {
-	return TRUE; // キャッシュ再生中に無効化されたくない場合は TRUE を返す
+	return TRUE; // キャッシュ再生中にプラグインを無効化されたくない場合は TRUE を返す
+}
+```
+
+また `RPStartCapturing` と `RPEndCapturing` という関数をエクスポートしておくと
+キャッシュデータ作成処理が開始される前に `RPStartCapturing` が呼ばれ、
+同じように処理完了後に `RPEndCapturing` が呼ばれるようになります。
+
+```c
+EXTERN_C __declspec(dllexport) void __stdcall RPStartCapturing( FILTER *fp ) {
+	// キャッシュデータ作成処理が開始される直前に呼び出される
+}
+EXTERN_C __declspec(dllexport) void __stdcall RPEndCapturing( FILTER *fp ) {
+	// キャッシュデータ作成処理の完了後に呼び出される
 }
 ```
 
