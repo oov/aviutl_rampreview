@@ -130,6 +130,8 @@ const
   OutputFilter = #$8E#$E8#$93#$AE#$82#$C5#$8E#$67#$82#$A4#$82#$B1#$82#$C6#$82#$CD#$82#$C5#$82#$AB#$82#$DC#$82#$B9#$82#$F1#$00#$44#$4F#$20#$4E#$4F#$54#$20#$55#$53#$45#$20#$54#$48#$49#$53#$00#$00;
   BoolConv: array[boolean] of AviUtlBool = (AVIUTL_FALSE, AVIUTL_TRUE);
   ScaleMap: array[0..3] of integer = (1, 1, 2, 4);
+  CaptureButtonCaption = '選択範囲からキャッシュ作成';
+  AbortButtonCaption = 'ESCキーで中止';
 
 type
   TRPKeepActiveProc = function (fp: PFilter): AviUtlBool; stdcall;
@@ -394,7 +396,7 @@ begin
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
       FCacheCreateButton := CreateWindowW('BUTTON',
-        '選択範囲からキャッシュ作成', WS_CHILD or
+        CaptureButtonCaption, WS_CHILD or
         WS_VISIBLE, 8, Y, 160, Height, Window, 2, Filter^.DLLHInst, nil);
       SendMessageW(FCacheCreateButton, WM_SETFONT, WPARAM(FFont), 0);
       Inc(Y, Height);
@@ -1303,6 +1305,7 @@ begin
     FCapturing := True;
     DisableGetSaveFileName(True);
     DisablePlaySound(True);
+    SetWindowTextW(FCacheCreateButton, AbortButtonCaption);
 
     FVideoEncoder := TEncoder.Create(Max(SI.MaxW, 1280) * Max(SI.MaxH, 720) *
       SizeOf(TPixelYC), True);
@@ -1343,6 +1346,7 @@ begin
     end;
 
   finally
+    SetWindowTextW(FCacheCreateButton, CaptureButtonCaption);
     DisablePlaySound(False);
     DisableGetSaveFileName(False);
     FCapturing := False;
