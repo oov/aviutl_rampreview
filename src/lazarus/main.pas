@@ -417,6 +417,7 @@ begin
         {%H-}LPARAM(PWideChar('解像度1/4'))); // 1/64
       SendMessageW(FResolutionComboBox, WM_SETFONT, WPARAM(FFont), 0);
       SendMessageW(FResolutionComboBox, CB_SETCURSEL, 1, 0);
+      FResolution := 1;
       Inc(Y, Height);
 
       Height := FFontHeight + GetSystemMetrics(SM_CYEDGE) * 2;
