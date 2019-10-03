@@ -342,6 +342,16 @@ begin
   Result := AVIUTL_TRUE;
 end;
 
+function SetClientSize(Window: THandle; Width, Height: integer): BOOL;
+var
+  WR, CR: TRect;
+begin
+  Result := False;
+  if not GetWindowRect(Window, WR) then Exit;
+  if not GetClientRect(Window, CR) then Exit;
+  Result := SetWindowPos(Window, 0, 0, 0, WR.Width - CR.Width + Width, WR.Height - CR.Height + Height, SWP_NOMOVE or SWP_NOZORDER);
+end;
+
 { TRamPreview }
 
 function TRamPreview.MainProc(Window: HWND; Message: UINT; WP: WPARAM;
@@ -441,10 +451,7 @@ begin
         Window, 3, Filter^.DLLHInst, nil);
       SendMessageW(FStatusLabel, WM_SETFONT, WPARAM(FFont), 0);
       Inc(Y, Height + 8);
-
-      Inc(Y, GetSystemMetrics(SM_CYCAPTION) + GetSystemMetrics(SM_CYFIXEDFRAME) * 2);
-      SetWindowPos(Window, 0, 0, 0, 8 + 160 + 8 + GetSystemMetrics(SM_CXFIXEDFRAME) *
-        2, Y, SWP_NOMOVE or SWP_NOZORDER);
+      SetClientSize(Window, 8 + 160 + 8, Y);
 
       try
         GetNativeSystemInfo(@si);
